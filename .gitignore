@@ -1,0 +1,14 @@
+node_modules/
+oracleJdk-26/
+dist/
+build/
+coverage/
+.env
+.env.local
+backend/data/
+*.sqlite
+*.log
+.DS_Store
+Thumbs.db
+.vite/
+*.tsbuildinfo
