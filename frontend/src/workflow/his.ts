@@ -20,6 +20,12 @@ import type {
   VisitRecord,
 } from './types';
 import { DEPARTMENT_LABELS } from './catalog';
+import { canAccessPage } from './permissions';
+import { DEFAULT_DRUG_STOCK, ensureDefaultServices, ensureDrugStock } from './pharmacyStock';
+import { findByHospitalNo } from './patientDb';
+import { visitMissingRequiredCc } from './patientAdmin';
+import { ROLE_SALARY_GHS } from './accounts';
+import { claimSchemeOf } from './supportDesks';
 
 function newId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -62,14 +68,7 @@ export function emptyHis(): HisCollections {
     ],
     samples: [],
     imagingStudies: [],
-    drugStock: [
-      { id: 'stk-pcm', serviceId: 'rx-pcm', name: 'Paracetamol 500mg', quantity: 240, reorderAt: 40, expiresOn: '2027-03-01', controlled: false, drugClass: 'analgesic' },
-      { id: 'stk-amox', serviceId: 'rx-amox', name: 'Amoxicillin 500mg', quantity: 80, reorderAt: 20, expiresOn: '2026-11-15', controlled: false, drugClass: 'penicillin' },
-      { id: 'stk-act', serviceId: 'rx-act', name: 'ACT antimalarial', quantity: 60, reorderAt: 15, expiresOn: '2027-01-20', controlled: false, drugClass: 'antimalarial' },
-      { id: 'stk-ibu', serviceId: 'rx-ibuprofen', name: 'Ibuprofen 400mg', quantity: 100, reorderAt: 20, expiresOn: '2026-09-01', controlled: false, drugClass: 'nsaid' },
-      { id: 'stk-prenatal', serviceId: 'rx-prenatal', name: 'Prenatal vitamins', quantity: 90, reorderAt: 20, expiresOn: '2027-06-01', controlled: false, drugClass: 'vitamin' },
-      { id: 'stk-morph', serviceId: 'rx-pcm', name: 'Morphine ampoule (controlled)', quantity: 8, reorderAt: 4, expiresOn: '2026-12-01', controlled: true, drugClass: 'opioid' },
-    ],
+    drugStock: DEFAULT_DRUG_STOCK.map((item) => ({ ...item })),
     controlledLog: [],
     beds: [
       ...Array.from({ length: 8 }, (_, i) => ({
@@ -100,15 +99,46 @@ export function emptyHis(): HisCollections {
     supplies: [
       { id: 'sup-glove', name: 'Nitrile gloves (box)', quantity: 40, reorderAt: 10, vendorId: 'ven-med' },
       { id: 'sup-gauze', name: 'Gauze packs', quantity: 25, reorderAt: 8, vendorId: 'ven-med' },
+      { id: 'sup-reagent', name: 'Lab reagent pack', quantity: 6, reorderAt: 4, vendorId: 'ven-med' },
+      { id: 'sup-linen', name: 'Ward linen set', quantity: 12, reorderAt: 5, vendorId: 'ven-med' },
     ],
+    storeIssues: [],
+    purchaseOrders: [],
     vendors: [{ id: 'ven-med', name: 'Accra Medical Supplies', phone: '030 222 1100' }],
     assets: [
-      { id: 'ast-xray', name: 'Mobile X-ray', location: 'Imaging', nextMaintenance: '2026-10-01' },
-      { id: 'ast-ot', name: 'OT table', location: 'Theatre', nextMaintenance: '2026-09-15' },
+      { id: 'ast-xray', name: 'Mobile X-ray', location: 'Imaging', nextMaintenance: '2026-10-01', kind: 'OTHER', status: 'IN_USE' },
+      { id: 'ast-ot', name: 'OT table', location: 'Theatre', nextMaintenance: '2026-09-15', kind: 'OTHER', status: 'IN_USE' },
+      { id: 'ast-pc-rec', name: 'Reception PC', location: 'Records', kind: 'PC', assignedStaffId: 'staff-reception', serial: 'PC-REC-01', status: 'IN_USE' },
+      { id: 'ast-prn-rec', name: 'Folder printer', location: 'Records', kind: 'PRINTER', serial: 'HP-LJ-2040', status: 'IN_USE' },
+      { id: 'ast-phone-nurs', name: 'Nursing desk phone', location: 'Nursing', kind: 'PHONE', status: 'IN_USE' },
+      {
+        id: 'ast-lic-win',
+        name: 'Windows 11 Pro',
+        location: 'IT store',
+        kind: 'LICENSE',
+        licenseKey: 'XXXXX-XXXXX-XXXXX',
+        assignedStaffId: 'staff-it',
+        status: 'IN_USE',
+      },
     ],
+    itTickets: [],
+    failedLogins: [],
     shifts: [],
+    cashCloses: [],
+    budgets: [],
+    payroll: [],
+    financeAdjustments: [],
+    paymentPlans: [],
+    vendorInvoices: [],
+    bankTxns: [],
+    periodLocks: [],
+    preAuths: [],
+    eobRecords: [],
+    handovers: [],
     nextAccessionSeq: 1,
     nextClaimSeq: 1,
+    nextPoSeq: 1,
+    rolePageGrants: {},
   };
 }
 
@@ -121,11 +151,12 @@ export function hydrateHis(state: CareState): CareState {
       (next as HisCollections)[key] = defaults[key] as never;
     }
   });
-  next.staff = next.staff.map((s) => ({
+  next.staff = (next.staff ?? []).map((s) => ({
     ...s,
     phone: s.phone || staffPhoneFromId(s.id),
+    salaryGhs: Number(s.salaryGhs) > 0 ? s.salaryGhs : ROLE_SALARY_GHS[s.role],
   }));
-  next.shifts = next.shifts.map((sh) => {
+  next.shifts = (next.shifts ?? []).map((sh) => {
     const worker = next.staff.find((s) => s.id === sh.staffId);
     return {
       ...sh,
@@ -134,7 +165,40 @@ export function hydrateHis(state: CareState): CareState {
       createdAt: sh.createdAt ?? nowIso(),
     };
   });
+  next.services = ensureDefaultServices(next.services);
+  next.drugStock = ensureDrugStock(next.drugStock);
+  next.notifications = Array.isArray(next.notifications) ? next.notifications : [];
+  next.itTickets = Array.isArray(next.itTickets) ? next.itTickets : [];
+  next.failedLogins = Array.isArray(next.failedLogins) ? next.failedLogins : [];
+  next.assets = (next.assets ?? []).map((asset) => ({
+    ...asset,
+    kind: asset.kind ?? 'OTHER',
+    status: asset.status ?? 'IN_USE',
+  }));
+  next.visits = assignVisitQueueNumbers(next.visits);
   return next;
+}
+
+function assignVisitQueueNumbers(visits: VisitRecord[]): VisitRecord[] {
+  const days = new Map<string, VisitRecord[]>();
+  for (const visit of visits) {
+    const day = visit.checkedInAt.slice(0, 10);
+    const list = days.get(day) ?? [];
+    list.push(visit);
+    days.set(day, list);
+  }
+  const numbers = new Map<string, number>();
+  for (const list of days.values()) {
+    const sorted = [...list].sort((a, b) => a.checkedInAt.localeCompare(b.checkedInAt));
+    let seq = Math.max(0, ...sorted.map((visit) => visit.queueNo ?? 0));
+    for (const visit of sorted) {
+      if (visit.queueNo) continue;
+      seq += 1;
+      numbers.set(visit.id, seq);
+    }
+  }
+  if (numbers.size === 0) return visits;
+  return visits.map((visit) => (numbers.has(visit.id) ? { ...visit, queueNo: numbers.get(visit.id) } : visit));
 }
 
 function staffPhoneFromId(id: string): string {
@@ -272,6 +336,230 @@ export function seedHis(state: Omit<CareState, keyof HisCollections> & Partial<H
         emailSent: true,
         smsSent: true,
       },
+      {
+        id: 'sh-r1',
+        staffId: 'staff-reception',
+        department: 'RECORDS',
+        day: new Date().toISOString().slice(0, 10),
+        startHour: 7,
+        endHour: 17,
+        createdBy: 'staff-records-head',
+        createdAt: ago(40),
+        notifiedAt: ago(40),
+        emailSent: true,
+        smsSent: true,
+      },
+      {
+        id: 'sh-lab1',
+        staffId: 'staff-lab',
+        department: 'LAB',
+        day: new Date().toISOString().slice(0, 10),
+        startHour: 7,
+        endHour: 16,
+        createdBy: 'staff-lab-head',
+        createdAt: ago(40),
+        notifiedAt: ago(40),
+        emailSent: true,
+        smsSent: true,
+      },
+      {
+        id: 'sh-ph1',
+        staffId: 'staff-pharmacy',
+        department: 'PHARMACY',
+        day: new Date().toISOString().slice(0, 10),
+        startHour: 8,
+        endHour: 20,
+        createdBy: 'staff-pharmacy-head',
+        createdAt: ago(40),
+        notifiedAt: ago(40),
+        emailSent: true,
+        smsSent: true,
+      },
+      {
+        id: 'sh-c1',
+        staffId: 'staff-cashier',
+        department: 'RECORDS',
+        day: new Date().toISOString().slice(0, 10),
+        startHour: 8,
+        endHour: 18,
+        createdBy: 'staff-admin',
+        createdAt: ago(40),
+        notifiedAt: ago(40),
+        emailSent: true,
+        smsSent: true,
+      },
+    ],
+    claims: [
+      {
+        id: 'clm-amara',
+        visitId: 'vis-amara',
+        patientId: 'pat-amara',
+        claimNo: 'CLM-00001',
+        status: 'SUBMITTED' as const,
+        scheme: 'NHIS' as const,
+        amountGhs: 130,
+        updatedAt: ago(30),
+        submittedAt: ago(30),
+        submissionRef: 'SUB-AMARA',
+        eligibilityDetail: 'Ghana Card GHA-123456789-1 — eligible on file.',
+      },
+      {
+        id: 'clm-kwame',
+        visitId: 'vis-kwame',
+        patientId: 'pat-kwame',
+        claimNo: 'CLM-00002',
+        status: 'ELIGIBLE' as const,
+        scheme: 'NHIS' as const,
+        amountGhs: 80,
+        updatedAt: ago(15),
+        eligibilityDetail: 'Ghana Card GHA-223456789-2 — eligible on file.',
+      },
+      {
+        id: 'clm-lisa',
+        visitId: 'vis-lisa',
+        patientId: 'pat-lisa',
+        claimNo: 'CLM-00003',
+        status: 'DRAFT' as const,
+        scheme: 'PRIVATE' as const,
+        amountGhs: 60,
+        updatedAt: ago(10),
+      },
+      {
+        id: 'clm-nina',
+        visitId: 'vis-nina',
+        patientId: 'pat-nina',
+        claimNo: 'CLM-00004',
+        status: 'DENIED' as const,
+        scheme: 'NHIS' as const,
+        amountGhs: 40,
+        denialReason: 'Need antenatal notes and Ghana Card copy.',
+        updatedAt: ago(8),
+      },
+    ],
+    nextClaimSeq: 5,
+    purchaseOrders: [
+      {
+        id: 'po-gloves',
+        poNo: 'PO-0001',
+        itemName: 'Nitrile gloves (box)',
+        quantity: 20,
+        vendorId: 'ven-med',
+        department: 'NURSING' as const,
+        status: 'ORDERED' as const,
+        requestedBy: 'staff-procurement',
+        requestedAt: ago(200),
+        orderedAt: ago(180),
+        note: 'Ward and OPD restock',
+        amountGhs: 180,
+      },
+      {
+        id: 'po-gauze',
+        poNo: 'PO-0002',
+        itemName: 'Gauze rolls',
+        quantity: 15,
+        vendorId: 'ven-med',
+        department: 'NURSING' as const,
+        status: 'REQUESTED' as const,
+        requestedBy: 'staff-procurement',
+        requestedAt: ago(40),
+        note: 'Theatre and dressing rooms',
+        amountGhs: 95,
+      },
+    ],
+    nextPoSeq: 3,
+    budgets: [
+      {
+        id: 'bud-month',
+        period: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`,
+        allocatedGhs: 120000,
+        note: 'Monthly operating allocation',
+        setBy: 'staff-accountant',
+        at: ago(200),
+      },
+    ],
+    payroll: [],
+    financeAdjustments: [],
+    paymentPlans: [],
+    vendorInvoices: [
+      {
+        id: 'vinv-gloves',
+        invoiceNo: 'ACC-INV-0041',
+        vendorId: 'ven-med',
+        poId: 'po-gloves',
+        amountGhs: 180,
+        category: 'OTHER' as const,
+        status: 'MATCHED' as const,
+        at: ago(160),
+        receivedAt: ago(160),
+        note: 'Nitrile gloves — match to PO-0001',
+      },
+    ],
+    bankTxns: [
+      {
+        id: 'bnk-open',
+        at: ago(400),
+        amountGhs: 5000,
+        direction: 'IN' as const,
+        reference: 'Opening transfer GCB',
+      },
+    ],
+    periodLocks: [],
+    preAuths: [
+      {
+        id: 'auth-amara',
+        visitId: 'vis-amara',
+        payer: 'NHIS',
+        ref: 'PA-AMARA-01',
+        status: 'APPROVED' as const,
+        at: ago(2000),
+      },
+    ],
+    eobRecords: [],
+    storeIssues: [
+      {
+        id: 'iss-lab-glove',
+        supplyId: 'sup-glove',
+        quantity: 2,
+        toDepartment: 'LAB' as const,
+        issuedBy: 'staff-stores',
+        at: ago(50),
+        note: 'Phlebotomy bench',
+      },
+    ],
+    itTickets: [
+      {
+        id: 'tkt-printer',
+        createdAt: ago(90),
+        updatedAt: ago(90),
+        openedByStaffId: 'staff-reception',
+        category: 'PRINTER' as const,
+        priority: 'HIGH' as const,
+        status: 'OPEN' as const,
+        title: 'Reception printer jam',
+        detail: 'Folder printer will not feed A4. Queue tickets cannot print.',
+        location: 'Records',
+      },
+      {
+        id: 'tkt-login',
+        createdAt: ago(40),
+        updatedAt: ago(20),
+        openedByStaffId: 'staff-nurse',
+        assignedToStaffId: 'staff-it',
+        category: 'LOGIN' as const,
+        priority: 'NORMAL' as const,
+        status: 'IN_PROGRESS' as const,
+        title: 'Night nurse cannot sign in',
+        detail: 'Account locked after the night shift. Need a password reset.',
+        location: 'Nursing',
+      },
+    ],
+    failedLogins: [
+      {
+        id: 'fail-demo-1',
+        at: ago(15),
+        login: 'nurse',
+        reason: 'Wrong password',
+      },
     ],
     auditLog: [],
   };
@@ -346,7 +634,7 @@ export function evaluateCds(
       }
     }
   }
-  const expired = state.drugStock.filter((d) => new Date(d.expiresOn).getTime() < Date.now() && blob.includes(d.name.split(' ')[0].toLowerCase()));
+  const expired = (state.drugStock ?? []).filter((d) => new Date(d.expiresOn).getTime() < Date.now() && blob.includes(d.name.split(' ')[0].toLowerCase()));
   for (const stock of expired) {
     alerts.push({ severity: 'warning', title: `Expired stock: ${stock.name}`, detail: `Expiry ${stock.expiresOn}` });
   }
@@ -400,7 +688,24 @@ export function mergePatients(state: CareState, survivorId: string, duplicateId:
   return next;
 }
 
+function canWriteClinicalChart(state: CareState, staffId?: string): boolean {
+  if (!staffId) return false;
+  const staff = state.staff.find((item) => item.id === staffId);
+  if (!staff) return false;
+  return canAccessPage(
+    {
+      role: staff.role,
+      department: staff.department,
+      extra: staff.permissions?.extra,
+      hidden: staff.permissions?.hidden,
+      rolePages: state.rolePageGrants?.[staff.role],
+    },
+    'clinical',
+  );
+}
+
 export function addAllergy(state: CareState, record: Omit<AllergyRecord, 'id' | 'recordedAt'>): CareState {
+  if (!canWriteClinicalChart(state, record.recordedBy)) return state;
   const row: AllergyRecord = { ...record, id: newId('alg'), recordedAt: nowIso() };
   return appendAudit({ ...state, allergies: [row, ...state.allergies] }, {
     staffId: record.recordedBy,
@@ -414,6 +719,7 @@ export function addProblem(
   state: CareState,
   input: { patientId: string; name: string; icdHint?: string; recordedBy: string },
 ): CareState {
+  if (!canWriteClinicalChart(state, input.recordedBy)) return state;
   if (state.problems.some((p) => p.patientId === input.patientId && p.name.toLowerCase() === input.name.toLowerCase() && p.status === 'active')) {
     return state;
   }
@@ -438,6 +744,7 @@ export function addMedication(
   state: CareState,
   input: Omit<MedicationRecord, 'id' | 'recordedAt' | 'status'> & { status?: MedicationRecord['status'] },
 ): CareState {
+  if (!canWriteClinicalChart(state, input.recordedBy)) return state;
   const row: MedicationRecord = {
     ...input,
     id: newId('med'),
@@ -451,6 +758,7 @@ export function addImmunization(
   state: CareState,
   input: { patientId: string; vaccine: string; dose: string; givenAt: string; recordedBy: string },
 ): CareState {
+  if (!canWriteClinicalChart(state, input.recordedBy)) return state;
   return {
     ...state,
     immunizations: [{ id: newId('imm'), ...input }, ...state.immunizations],
@@ -461,6 +769,7 @@ export function addClinicalNote(
   state: CareState,
   input: Omit<ClinicalNoteRecord, 'id' | 'createdAt'>,
 ): CareState {
+  if (!canWriteClinicalChart(state, input.createdBy)) return state;
   const row: ClinicalNoteRecord = { ...input, id: newId('note'), createdAt: nowIso() };
   return appendAudit({ ...state, clinicalNotes: [row, ...state.clinicalNotes] }, {
     staffId: input.createdBy,
@@ -965,18 +1274,31 @@ export function afterImaging(state: CareState, visitId: string, orderId: string,
   };
 }
 
+function hasUnreadStockAlert(state: CareState, title: string, name: string): boolean {
+  return state.notifications.some((note) => !note.read && note.kind === 'stock' && note.title === title && note.body.includes(name));
+}
+
 export function dispenseStock(
   state: CareState,
   input: { serviceId: string; quantity: number; visitId: string; staffId: string; witness?: string },
 ): CareState {
-  const stock = state.drugStock.find((d) => d.serviceId === input.serviceId && !d.controlled) ??
-    state.drugStock.find((d) => d.serviceId === input.serviceId);
+  const stock =
+    (state.drugStock ?? []).find((d) => d.serviceId === input.serviceId && !d.controlled) ??
+    (state.drugStock ?? []).find((d) => d.serviceId === input.serviceId);
   if (!stock || stock.quantity < input.quantity) {
-    return notify(state, { audience: 'staff', title: 'Stock out', body: `Cannot dispense ${input.serviceId}`, kind: 'system' });
+    const name = stock?.name ?? input.serviceId;
+    if (hasUnreadStockAlert(state, 'Out of stock', name)) return state;
+    return notify(state, {
+      audience: 'staff',
+      title: 'Out of stock',
+      body: `${name} cannot be dispensed. Quantity on the shelf is ${stock?.quantity ?? 0}. Reorder now.`,
+      kind: 'stock',
+    });
   }
+  const remaining = stock.quantity - input.quantity;
   let next: CareState = {
     ...state,
-    drugStock: state.drugStock.map((d) => (d.id === stock.id ? { ...d, quantity: d.quantity - input.quantity } : d)),
+    drugStock: state.drugStock.map((d) => (d.id === stock.id ? { ...d, quantity: remaining } : d)),
   };
   if (stock.controlled) {
     next = {
@@ -995,15 +1317,29 @@ export function dispenseStock(
       ],
     };
   }
-  if (stock.quantity - input.quantity <= stock.reorderAt) {
+  if (remaining === 0 && !hasUnreadStockAlert(next, 'Out of stock', stock.name)) {
     next = notify(next, {
       audience: 'staff',
-      title: 'Reorder point',
-      body: `${stock.name} is at ${stock.quantity - input.quantity}`,
-      kind: 'system',
+      title: 'Out of stock',
+      body: `${stock.name} is now out of stock. Reorder immediately.`,
+      kind: 'stock',
+    });
+  } else if (remaining > 0 && remaining <= stock.reorderAt && !hasUnreadStockAlert(next, 'Low stock', stock.name)) {
+    next = notify(next, {
+      audience: 'staff',
+      title: 'Low stock',
+      body: `${stock.name} is down to ${remaining} (reorder at ${stock.reorderAt}).`,
+      kind: 'stock',
     });
   }
   return next;
+}
+
+export function afterPharmacyDispense(state: CareState, visitId: string, orderId: string, staffId: string): CareState {
+  const visit = state.visits.find((item) => item.id === visitId);
+  const order = visit?.orders.find((item) => item.id === orderId);
+  if (!order || order.department !== 'PHARMACY' || order.serviceId === 'rx-dispense') return state;
+  return dispenseStock(state, { serviceId: order.serviceId, quantity: 1, visitId, staffId });
 }
 
 export function scheduleOt(state: CareState, visitId: string, staffId: string, procedure: string): CareState {
@@ -1073,8 +1409,11 @@ export function upsertClaim(
 ): CareState {
   const visit = state.visits.find((v) => v.id === input.visitId);
   if (!visit) return state;
+  const patient = state.patients.find((p) => p.id === visit.patientId);
+  if (input.status === 'SUBMITTED' && visitMissingRequiredCc(patient, visit)) return state;
   const existing = state.claims.find((c) => c.visitId === input.visitId);
   const amount = visit.orders.filter((o) => o.chargeable !== false).reduce((sum, o) => sum + o.priceGhs, 0);
+  const scheme = existing?.scheme ?? claimSchemeOf(patient);
   if (existing) {
     const submitted = input.status === 'SUBMITTED';
     return {
@@ -1084,6 +1423,7 @@ export function upsertClaim(
           ? {
               ...c,
               status: input.status ?? c.status,
+              scheme: scheme ?? c.scheme,
               denialReason: input.denialReason,
               amountGhs: amount,
               updatedAt: nowIso(),
@@ -1107,6 +1447,7 @@ export function upsertClaim(
         patientId: visit.patientId,
         claimNo: `CLM-${String(seq).padStart(5, '0')}`,
         status: input.status ?? 'DRAFT',
+        scheme,
         amountGhs: amount,
         updatedAt: nowIso(),
         submittedAt: submitted ? nowIso() : undefined,
@@ -1123,10 +1464,12 @@ export function verifyEligibility(state: CareState, patientId: string): { ok: bo
   if (!patient) return { ok: false, detail: 'Unknown patient' };
   const number = (patient.insuranceNumber ?? '').replace(/\s/g, '');
   if (patient.insuranceType === 'GOVERNMENT') {
-    if (!/^[A-Z0-9-]{8,20}$/i.test(number)) {
-      return { ok: false, detail: 'NHIS number missing or invalid (use 8–20 letters or digits).' };
+    const ghanaId = (patient.ghanaCardNo ?? patient.hinNumber ?? number).replace(/\s/g, '');
+    if (!/^[A-Z0-9-]{8,24}$/i.test(ghanaId)) {
+      return { ok: false, detail: 'NHIS / Ghana Card / HIN missing or invalid.' };
     }
-    return { ok: true, detail: `NHIS ${number} — eligible on file.` };
+    const via = patient.ghanaCardNo ? `Ghana Card ${patient.ghanaCardNo}` : number ? `NHIS ${number}` : `HIN ${patient.hinNumber}`;
+    return { ok: true, detail: `${via} — eligible on file.` };
   }
   if (patient.insuranceType === 'PRIVATE') {
     if (!patient.insuranceProvider?.trim() || !/^[A-Z0-9-]{6,24}$/i.test(number)) {
@@ -1154,6 +1497,8 @@ export function buildClaimPack(state: CareState, visitId: string) {
           insuranceType: patient.insuranceType,
           insuranceProvider: patient.insuranceProvider,
           insuranceNumber: patient.insuranceNumber,
+          ghanaCardNo: patient.ghanaCardNo,
+          hinNumber: patient.hinNumber,
         }
       : null,
     visit: visit
@@ -1182,12 +1527,21 @@ export function sendMessage(
 
 export function addFamilyLink(
   state: CareState,
-  input: { patientId: string; relatedPatientId: string; relationship: FamilyLinkRecordRelationship },
+  input: { patientId: string; relatedPatientId: string; relationship: FamilyLinkRecordRelationship; recordedBy?: string },
 ): CareState {
+  if (!canWriteClinicalChart(state, input.recordedBy)) return state;
   if (input.patientId === input.relatedPatientId) return state;
   return {
     ...state,
-    familyLinks: [{ id: newId('fam'), ...input }, ...state.familyLinks],
+    familyLinks: [
+      {
+        id: newId('fam'),
+        patientId: input.patientId,
+        relatedPatientId: input.relatedPatientId,
+        relationship: input.relationship,
+      },
+      ...state.familyLinks,
+    ],
   };
 }
 
@@ -1292,10 +1646,8 @@ export function visitTaxAmount(visit: VisitRecord): number {
 }
 
 export function authenticatePatient(state: CareState, hospitalNo: string, pin: string): PatientRecord | null {
-  const patient = state.patients.find(
-    (p) => p.hospitalNo.replace(/\s/g, '').toLowerCase() === hospitalNo.trim().toLowerCase() && !p.mergedIntoId,
-  );
-  if (!patient) return null;
+  const patient = findByHospitalNo(state.patients, hospitalNo);
+  if (!patient || patient.mergedIntoId) return null;
   if (!patient.portalPin || patient.portalPin !== pin.trim()) return null;
   return patient;
 }

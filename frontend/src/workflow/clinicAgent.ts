@@ -1,6 +1,7 @@
 import { CLINIC_LABELS, formatGhs } from './catalog';
 import { unpaidOrders } from './billing';
 import { buildDashboardSnapshot, type DashboardPeriod } from './dashboard';
+import { findByHospitalNo } from './patientDb';
 import { insuranceLabel } from './patientAdmin';
 import { averageWaitMinutes, visitsToday } from './store';
 import { ROLE_LABELS, STAGE_LABELS, STAGE_ORDER, type CareState, type PatientRecord, type VisitRecord } from './types';
@@ -65,8 +66,10 @@ function detectPeriod(text: string, memory: AgentMemory): DashboardPeriod {
 }
 
 function findPatients(state: CareState, text: string): PatientRecord[] {
-  const folder = text.match(/\b(?:ch[-\s]?\d{3,}|20\d{2}\/\d+)\b/i);
+  const folder = text.match(/\b(?:A\d{1,5}(?:[/-]\d{4})?|ch[-\s]?\d+|20\d{2}[/-]A?\d+)\b/i);
   if (folder) {
+    const found = findByHospitalNo(state.patients, folder[0]);
+    if (found) return [found];
     const needle = folder[0].replace(/\s+/g, '').toUpperCase();
     return state.patients.filter((patient) => patient.hospitalNo.replace(/\s+/g, '').toUpperCase().includes(needle));
   }

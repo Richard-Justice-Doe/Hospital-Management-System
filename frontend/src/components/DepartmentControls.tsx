@@ -96,6 +96,11 @@ export function DepartmentBillsPanel({
   return (
     <section className="rounded-xl border border-red-100 bg-white p-5">
       <h2 className="font-medium text-slate-900">Remove bill</h2>
+      <p className="mt-1 text-sm text-slate-500">
+        {department === 'ALL'
+          ? 'Admin can take any unpaid charge off a patient.'
+          : `Only unpaid ${label} charges can be removed here.`}
+      </p>
       {rows.length === 0 ? (
         <p className="mt-3 text-sm text-slate-500">No unpaid {label} bills.</p>
       ) : (

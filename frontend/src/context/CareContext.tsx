@@ -31,7 +31,8 @@ import {
   visitsToday,
   type PatientAdminInput,
 } from '../workflow/store';
-import { afterLabResults, afterPlanCare, purgePatientHis } from '../workflow/his';
+import { canReceivePayment, canRemoveBill } from '../workflow/billing';
+import { afterLabResults, afterPharmacyDispense, afterPlanCare, hydrateHis, purgePatientHis } from '../workflow/his';
 import type {
   CareState,
   ClinicId,
@@ -114,6 +115,7 @@ interface CareContextValue {
   removePatient: (patientId: string) => void;
   addStaff: (input: {
     email: string;
+    username?: string;
     firstName: string;
     lastName: string;
     role: StaffRole;
@@ -129,6 +131,9 @@ interface CareContextValue {
   applyServerState: (state: CareState, version: number) => void;
   resetDemo: () => void;
   updateCare: (updater: (state: CareState) => CareState) => void;
+  undoLast: () => boolean;
+  canUndo: boolean;
+  offline: boolean;
   visitsByStage: (stage: VisitStage) => CareState['visits'];
   todayVisits: CareState['visits'];
   avgWaitMinutes: number | null;
@@ -140,22 +145,39 @@ const CareContext = createContext<CareContextValue | null>(null);
 export function CareProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<CareState>(() => loadCareState());
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [offline, setOffline] = useState(() => (typeof navigator !== 'undefined' ? !navigator.onLine : false));
+  const [canUndo, setCanUndo] = useState(false);
   const { user } = useAuth();
   const versionRef = useRef(0);
+  const undoRef = useRef<Array<{ at: number; prev: CareState }>>([]);
+  const skipUndo = useRef(false);
 
   const applyServerState = useCallback((next: CareState, version: number) => {
     versionRef.current = version;
-    setState(next);
+    setState(hydrateHis(next));
   }, []);
 
   const commit = useCallback(
     (next: CareState) => {
-      if (!USE_SERVER) {
-        setState(saveCareState(next));
+      if (!skipUndo.current) {
+        undoRef.current = [...undoRef.current, { at: Date.now(), prev: state }].slice(-10);
+        setCanUndo(true);
+      }
+      skipUndo.current = false;
+      const stamped = { ...next, lastSavedAt: new Date().toISOString() };
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setOffline(true);
+        setState(saveCareState(stamped));
+        setSyncError('Offline — saved on this desk.');
         return;
       }
-      setState(next);
-      void putCare(next, versionRef.current).then(async (res) => {
+      setOffline(false);
+      if (!USE_SERVER) {
+        setState(saveCareState(stamped));
+        return;
+      }
+      setState(stamped);
+      void putCare(stamped, versionRef.current).then(async (res) => {
         const body = (await res.json().catch(() => ({}))) as { version?: number; state?: CareState; error?: string };
         if (res.status === 409 && body.state && body.version) {
           setSyncError('Another desk saved first. Showing the shared hospital file.');
@@ -170,8 +192,19 @@ export function CareProvider({ children }: { children: ReactNode }) {
         if (body.state && body.version) applyServerState(body.state, body.version);
       });
     },
-    [applyServerState],
+    [applyServerState, state],
   );
+
+  useEffect(() => {
+    const on = () => setOffline(false);
+    const off = () => setOffline(true);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, []);
 
   useEffect(() => {
     if (!USE_SERVER || !user) return;
@@ -215,16 +248,30 @@ export function CareProvider({ children }: { children: ReactNode }) {
       routeToDoctor: (visitId) => commit(sendToDoctor(state, visitId)),
       planVisit: (visitId, input) =>
         commit(afterPlanCare(planCare(state, visitId, input), visitId, user?.id ?? 'staff-doctor', input.prescription)),
-      finishOrder: (visitId, orderId, result, labLines) =>
-        commit(
-          afterLabResults(completeOrder(state, visitId, orderId, result, labLines), visitId, [{ orderId, result, labLines }], user?.id ?? 'staff-lab'),
-        ),
+      finishOrder: (visitId, orderId, result, labLines) => {
+        const staffId = user?.id ?? 'staff-pharmacy';
+        const afterWork = afterLabResults(
+          completeOrder(state, visitId, orderId, result, labLines),
+          visitId,
+          [{ orderId, result, labLines }],
+          staffId,
+        );
+        commit(afterPharmacyDispense(afterWork, visitId, orderId, staffId));
+      },
       finishOrders: (visitId, updates) =>
         commit(afterLabResults(completeOrders(state, visitId, updates), visitId, updates, user?.id ?? 'staff-lab')),
       addToBill: (visitId, serviceIds) => commit(addCharges(state, visitId, serviceIds, 'DONE')),
-      removeFromBill: (visitId, orderId) => commit(removeCharge(state, visitId, orderId)),
+      removeFromBill: (visitId, orderId) => {
+        const staff = state.staff.find((item) => item.id === user?.id) ?? user;
+        const order = state.visits.find((visit) => visit.id === visitId)?.orders.find((item) => item.id === orderId);
+        if (!order || !canRemoveBill(staff, order.department)) return;
+        commit(removeCharge(state, visitId, orderId));
+      },
       decideBilling: (visitId, input) => commit(applyVisitBilling(state, visitId, input)),
-      collectPayment: (visitId, staffId) => commit(payBill(state, visitId, staffId)),
+      collectPayment: (visitId, staffId) => {
+        if (!canReceivePayment(user?.role)) return;
+        commit(payBill(state, visitId, staffId));
+      },
       toggleService: (serviceId, enabled) => commit(setServiceEnabled(state, serviceId, enabled)),
       updatePrice: (serviceId, priceGhs) => commit(setServicePrice(state, serviceId, priceGhs)),
       savePatient: (patient) => commit(upsertPatient(state, patient)),
@@ -254,12 +301,22 @@ export function CareProvider({ children }: { children: ReactNode }) {
       },
       resetDemo: () => commit(resetCareState()),
       updateCare: (updater) => commit(updater(state)),
+      undoLast: () => {
+        const last = undoRef.current.pop();
+        setCanUndo(undoRef.current.some((item) => Date.now() - item.at < 5 * 60 * 1000));
+        if (!last || Date.now() - last.at > 5 * 60 * 1000) return false;
+        skipUndo.current = true;
+        commit(last.prev);
+        return true;
+      },
+      canUndo,
+      offline,
       visitsByStage: (stage) => state.visits.filter((v) => v.stage === stage),
       todayVisits: visitsToday(state.visits),
       avgWaitMinutes: averageWaitMinutes(state.visits),
       activity: staffActivity(state),
     }),
-    [state, commit, user?.id, syncError, applyServerState],
+    [state, commit, user?.id, syncError, applyServerState, canUndo, offline],
   );
 
   return <CareContext.Provider value={value}>{children}</CareContext.Provider>;

@@ -1,13 +1,36 @@
+import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useCare } from '../context/CareContext';
 import PatientIdentity from '../components/PatientIdentity';
 import { StageBadge } from '../components/StageBadge';
 import VisitChargeSummary, { AddChargesPanel } from '../components/VisitChargeSummary';
 import { DepartmentBillsPanel, DepartmentServicesPanel, RemoveBillButton } from '../components/DepartmentControls';
-import { formatGhs } from '../workflow/catalog';
+import { DEPARTMENT_LABELS, formatGhs } from '../workflow/catalog';
 import { ordersForDepartment } from '../workflow/store';
 import { canControlDepartment, type Department } from '../workflow/types';
 import DepartmentShiftPanel from '../components/DepartmentShiftPanel';
+import RecordSavedModal from '../components/RecordSavedModal';
+import type { PromptKind } from '../components/ActionPrompt';
+
+const AFTER_WORK: Record<Department, { kind: PromptKind; detail: string }> = {
+  RECORDS: { kind: 'sent_nursing', detail: 'Folder work is finished. Take them to nursing.' },
+  CONSULTATION: { kind: 'sent_accounts', detail: 'Consult is finished. Send them to pay.' },
+  NURSING: { kind: 'sent_accounts', detail: 'Nursing work is finished. Send them to the next desk or to pay.' },
+  LAB: { kind: 'sent_doctor', detail: 'Lab work is finished. Tell the doctor they are ready.' },
+  PHARMACY: { kind: 'sent_accounts', detail: 'Medicine is ready. If they have not paid, send them to Accounts.' },
+  RADIOLOGY: { kind: 'sent_doctor', detail: 'X-ray is finished. Send them back to the doctor.' },
+  PHYSIO: { kind: 'sent_accounts', detail: 'Physiotherapy is finished. Send them to pay if they have not paid.' },
+  DENTAL: { kind: 'sent_accounts', detail: 'Dental work is finished. Send them to pay if they have not paid.' },
+  EYE: { kind: 'sent_accounts', detail: 'Eye clinic work is finished. Send them to pay if they have not paid.' },
+  ENT: { kind: 'sent_accounts', detail: 'ENT work is finished. Send them to pay if they have not paid.' },
+  MATERNITY: { kind: 'sent_accounts', detail: 'Maternity work is finished. Send them to pay if they have not paid.' },
+  THEATRE: { kind: 'work_done', detail: 'Theatre work is finished. Take them to recovery or the ward.' },
+  WARD: { kind: 'work_done', detail: 'Ward work is finished.' },
+  CLAIMS: { kind: 'work_done', detail: 'Claim work is finished.' },
+  STORES: { kind: 'work_done', detail: 'Store issue is finished.' },
+  PROCUREMENT: { kind: 'work_done', detail: 'Purchase request is saved.' },
+  IT: { kind: 'work_done', detail: 'IT support work is finished.' },
+};
 
 export default function DepartmentQueuePage({
   department,
@@ -20,16 +43,25 @@ export default function DepartmentQueuePage({
   const { state, finishOrder, addToBill, removeFromBill, toggleService, updatePrice } = useCare();
   const queue = ordersForDepartment(state.visits, department);
   const isHead = canControlDepartment(user, department);
+  const [prompt, setPrompt] = useState<{ kind: PromptKind; name: string; detail: string } | null>(null);
 
   return (
     <div className="p-6">
+      {prompt && (
+        <RecordSavedModal
+          kind={prompt.kind}
+          patientName={prompt.name}
+          detail={prompt.detail}
+          onClose={() => setPrompt(null)}
+        />
+      )}
       <h1 className="text-xl font-semibold text-clinic-900">{title}</h1>
       <DepartmentShiftPanel department={department} />
 
       {isHead && (
         <div className="mt-6">
           <DepartmentBillsPanel
-            department="ALL"
+            department={department}
             visits={state.visits}
             patients={state.patients}
             onRemove={removeFromBill}
@@ -71,7 +103,7 @@ export default function DepartmentQueuePage({
                       <VisitChargeSummary
                         visit={visit}
                         showResults
-                        managedDepartment={undefined}
+                        managedDepartment={department}
                         onRemoveCharge={isHead ? (orderId) => removeFromBill(visit.id, orderId) : undefined}
                       />
                     </td>
@@ -82,10 +114,19 @@ export default function DepartmentQueuePage({
                       <div className="flex flex-col gap-2">
                         <button
                           type="button"
-                          onClick={() => finishOrder(visit.id, order.id, 'Completed')}
-                          className="rounded-lg bg-clinic-600 px-4 py-1.5 text-sm text-white"
+                          onClick={() => {
+                            const name = p ? `${p.firstName} ${p.lastName}` : 'Patient';
+                            finishOrder(visit.id, order.id, 'Completed');
+                            const after = AFTER_WORK[department];
+                            setPrompt({
+                              kind: after.kind,
+                              name,
+                              detail: `${DEPARTMENT_LABELS[department]}: ${after.detail}`,
+                            });
+                          }}
+                          className="rounded-lg bg-clinic-600 px-4 py-2 text-sm font-medium text-white"
                         >
-                          Mark done
+                          Work done — send to pay
                         </button>
                         {isHead && order.chargeable !== false && !order.paidAt && (
                           <RemoveBillButton onClick={() => removeFromBill(visit.id, order.id)} />

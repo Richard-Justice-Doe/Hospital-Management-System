@@ -7,10 +7,13 @@ export function useStaffAccess(): StaffAccess | null {
   const { state } = useCare();
   if (!user) return null;
   const staff = state.staff.find((item) => item.id === user.id);
-  const extra = staff?.permissions?.extra ?? user.permissions?.extra;
-  const hidden = staff?.permissions?.hidden ?? user.permissions?.hidden;
+  const extra = staff ? staff.permissions?.extra : user.permissions?.extra;
+  const hidden = staff ? staff.permissions?.hidden : user.permissions?.hidden;
+  const role = staff?.role ?? user.role;
   return {
-    role: user.role,
+    role,
+    department: staff?.department ?? user.department,
+    rolePages: state.rolePageGrants?.[role],
     ...(extra?.length ? { extra } : {}),
     ...(hidden?.length ? { hidden } : {}),
   };

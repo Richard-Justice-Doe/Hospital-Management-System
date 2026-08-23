@@ -40,7 +40,7 @@ export default function CopayerPage() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
-      {saved && <RecordSavedModal title="Record saved" detail={saved} onClose={() => setSaved(null)} />}
+      {saved && <RecordSavedModal kind="saved" detail={saved} onClose={() => setSaved(null)} />}
       <section className="rounded-xl border bg-white p-5">
         <h3 className="font-medium">Co-payer</h3>
         {message && <p className="mt-3 rounded-lg bg-clinic-50 px-3 py-2 text-sm text-clinic-700">{message}</p>}

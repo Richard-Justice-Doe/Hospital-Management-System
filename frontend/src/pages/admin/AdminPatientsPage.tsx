@@ -155,6 +155,12 @@ export default function AdminPatientsPage() {
             <Field label="Address">
               <input className={inputClass} value={draft.address ?? ''} onChange={(e) => setDraft({ ...draft, address: e.target.value })} />
             </Field>
+            <Field label="Ghana Card">
+              <input className={inputClass} value={draft.ghanaCardNo ?? ''} onChange={(e) => setDraft({ ...draft, ghanaCardNo: e.target.value })} />
+            </Field>
+            <Field label="HIN number">
+              <input className={inputClass} value={draft.hinNumber ?? ''} onChange={(e) => setDraft({ ...draft, hinNumber: e.target.value })} />
+            </Field>
             <Field label="Insurance">
               <select
                 className={inputClass}

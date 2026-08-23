@@ -9,6 +9,11 @@ import { ordersForDepartment } from '../workflow/store';
 import { CLINIC_LABELS, formatGhs } from '../workflow/catalog';
 import { canControlDepartment } from '../workflow/types';
 import DepartmentShiftPanel from '../components/DepartmentShiftPanel';
+import RecordSavedModal from '../components/RecordSavedModal';
+import VitalsPad from '../components/VitalsPad';
+import PatientJourneyCard from '../components/PatientJourneyCard';
+import { CallNextButton } from '../components/DeskTools';
+import type { PromptKind } from '../components/ActionPrompt';
 
 const EMPTY = {
   systolicBp: '',
@@ -28,11 +33,20 @@ export default function NursingPage() {
   const ready = visitsByStage('VITALS_DONE');
   const [selectedId, setSelectedId] = useState<string | null>(queue[0]?.id ?? null);
   const [form, setForm] = useState(EMPTY);
+  const [padKey, setPadKey] = useState<keyof typeof EMPTY>('systolicBp');
+  const [prompt, setPrompt] = useState<{ kind: PromptKind; name: string; detail: string } | null>(null);
   const selected = state.visits.find((v) => v.id === selectedId);
   const isHead = canControlDepartment(user, 'NURSING');
 
+  function patientName(visitId: string) {
+    const visit = state.visits.find((item) => item.id === visitId);
+    const person = state.patients.find((item) => item.id === visit?.patientId);
+    return person ? `${person.firstName} ${person.lastName}` : 'Patient';
+  }
+
   function submitVitals() {
     if (!selected) return;
+    const name = patientName(selected.id);
     saveVitals(
       selected.id,
       {
@@ -48,16 +62,29 @@ export default function NursingPage() {
     );
     setForm(EMPTY);
     setSelectedId(null);
+    setPrompt({ kind: 'vitals', name, detail: 'Vitals are saved. When they are ready, send them to the doctor.' });
   }
 
   return (
     <div className="p-6">
-      <h1 className="text-xl font-semibold text-clinic-900">Nursing</h1>
+      {prompt && (
+        <RecordSavedModal
+          kind={prompt.kind}
+          patientName={prompt.name}
+          detail={prompt.detail}
+          destinations={prompt.kind === 'vitals' ? ['sent_doctor'] : undefined}
+          onClose={() => setPrompt(null)}
+        />
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-clinic-900">Nursing</h1>
+        <CallNextButton />
+      </div>
       <DepartmentShiftPanel department="NURSING" />
 
       {isHead && (
         <div className="mt-6">
-          <DepartmentBillsPanel department="ALL" visits={state.visits} patients={state.patients} onRemove={removeFromBill} />
+          <DepartmentBillsPanel department="NURSING" visits={state.visits} patients={state.patients} onRemove={removeFromBill} />
         </div>
       )}
 
@@ -65,7 +92,11 @@ export default function NursingPage() {
         <section className="rounded-xl border bg-white p-5">
           <h2 className="font-medium">Waiting for vitals ({queue.length})</h2>
           <ul className="mt-3 space-y-2">
-            {queue.length === 0 && <li className="text-sm text-slate-500">Queue is empty.</li>}
+            {queue.length === 0 && (
+              <li className="rounded-lg border border-dashed border-slate-200 px-3 py-8 text-center text-sm text-slate-500">
+                Queue is empty. Reception will send the next walk-in here.
+              </li>
+            )}
             {queue.map((v) => {
               const p = state.patients.find((x) => x.id === v.patientId);
               return (
@@ -75,7 +106,14 @@ export default function NursingPage() {
                     onClick={() => setSelectedId(v.id)}
                     className={`w-full rounded-lg border px-3 py-2 text-left text-sm hover:bg-clinic-50 ${selectedId === v.id ? 'border-clinic-500 bg-clinic-50' : 'border-slate-100'}`}
                   >
-                    <PatientIdentity patient={p} extra={` · ${p?.age}y ${p?.gender}`} />
+                    <div className="flex items-start justify-between gap-2">
+                      <PatientIdentity patient={p} extra={` · ${p?.age}y ${p?.gender}`} />
+                      {v.queueNo ? (
+                        <span className="rounded-full bg-clinic-100 px-2 py-0.5 font-mono text-xs font-semibold text-clinic-800">
+                          #{v.queueNo}
+                        </span>
+                      ) : null}
+                    </div>
                     <p className="mt-1 text-xs text-slate-500">
                       {CLINIC_LABELS[v.clinic ?? 'GENERAL']} · {v.reason}
                     </p>
@@ -91,7 +129,8 @@ export default function NursingPage() {
             <p className="text-sm text-slate-500">Select a patient to record vitals.</p>
           ) : (
             <>
-              <h2 className="font-medium">Vitals table</h2>
+              <PatientJourneyCard patient={state.patients.find((item) => item.id === selected.patientId)} visit={selected} />
+              <h2 className="mt-4 font-medium">Vitals table</h2>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 {(
                   [
@@ -111,12 +150,15 @@ export default function NursingPage() {
                       type="number"
                       step="any"
                       value={form[key]}
+                      onFocus={() => setPadKey(key)}
                       onChange={(e) => setForm({ ...form, [key]: e.target.value })}
                       className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm"
                     />
                   </label>
                 ))}
               </div>
+              <p className="mt-3 text-xs font-semibold text-slate-500">Tap numbers for {padKey}</p>
+              <VitalsPad value={form[padKey]} onChange={(next) => setForm({ ...form, [padKey]: next })} />
               <button
                 type="button"
                 onClick={submitVitals}
@@ -131,6 +173,11 @@ export default function NursingPage() {
 
         <section className="lg:col-span-2 rounded-xl border bg-white p-5">
           <h2 className="font-medium">Ready for doctor ({ready.length})</h2>
+          {ready.length === 0 && (
+            <p className="mt-3 rounded-lg border border-dashed border-slate-200 px-3 py-8 text-center text-sm text-slate-500">
+              Nobody is ready for the doctor yet. Finish vitals on the left first.
+            </p>
+          )}
           <ul className="mt-3 grid gap-3 sm:grid-cols-2">
             {ready.map((v) => {
               const p = state.patients.find((x) => x.id === v.patientId);
@@ -149,10 +196,18 @@ export default function NursingPage() {
                   </p>
                   <button
                     type="button"
-                    onClick={() => routeToDoctor(v.id)}
-                    className="mt-3 text-sm text-clinic-600 hover:underline"
+                    onClick={() => {
+                      const name = patientName(v.id);
+                      routeToDoctor(v.id);
+                      setPrompt({
+                        kind: 'sent_doctor',
+                        name,
+                        detail: `Walk ${name} to the doctor / ${CLINIC_LABELS[v.clinic ?? 'GENERAL']}.`,
+                      });
+                    }}
+                    className="mt-3 rounded-lg bg-clinic-600 px-4 py-2 text-sm font-medium text-white"
                   >
-                    Send to {CLINIC_LABELS[v.clinic ?? 'GENERAL']}
+                    Send to doctor
                   </button>
                 </li>
               );
@@ -164,6 +219,11 @@ export default function NursingPage() {
       <section className="mt-6 rounded-xl border bg-white p-5">
         <h2 className="font-medium">Nursing procedures</h2>
         <ul className="mt-3 space-y-2">
+          {ordersForDepartment(state.visits, 'NURSING').length === 0 && (
+            <li className="rounded-lg border border-dashed border-slate-200 px-3 py-8 text-center text-sm text-slate-500">
+              No nursing procedures in the queue.
+            </li>
+          )}
           {ordersForDepartment(state.visits, 'NURSING').map(({ visit, order }) => {
             const p = state.patients.find((x) => x.id === visit.patientId);
             return (
@@ -176,7 +236,15 @@ export default function NursingPage() {
                     {isHead && order.chargeable !== false && !order.paidAt && (
                       <RemoveBillButton onClick={() => removeFromBill(visit.id, order.id)} />
                     )}
-                    <button type="button" onClick={() => finishOrder(visit.id, order.id)} className="text-clinic-600 hover:underline">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const name = patientName(visit.id);
+                        finishOrder(visit.id, order.id);
+                        setPrompt({ kind: 'work_done', name, detail: 'Nursing work is finished. Send them to the next desk or to pay.' });
+                      }}
+                      className="rounded-lg bg-clinic-600 px-3 py-1.5 text-sm font-medium text-white"
+                    >
                       Mark done
                     </button>
                   </span>

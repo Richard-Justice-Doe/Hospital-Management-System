@@ -1,4 +1,4 @@
-import type { CopayerRelationship, InsuranceType, PatientRecord } from './types';
+import type { CopayerRelationship, InsuranceType, PatientRecord, VisitRecord } from './types';
 
 export const INSURANCE_LABELS: Record<InsuranceType, string> = {
   GOVERNMENT: 'Government (NHIS)',
@@ -52,12 +52,33 @@ export function isCashPrivatePatient(patient?: Pick<PatientRecord, 'insuranceTyp
   return patient?.insuranceType === 'CASH';
 }
 
-export function insuranceLabel(patient?: Pick<PatientRecord, 'insuranceType' | 'insuranceProvider' | 'insuranceNumber'> | null): string {
+export function insuranceLabel(
+  patient?: Pick<PatientRecord, 'insuranceType' | 'insuranceProvider' | 'insuranceNumber' | 'ghanaCardNo' | 'hinNumber'> | null,
+): string {
   if (!patient?.insuranceType) return 'Not recorded';
   const type = INSURANCE_LABELS[patient.insuranceType];
   if (patient.insuranceType === 'CASH') return type;
-  const extra = [patient.insuranceProvider, patient.insuranceNumber].filter(Boolean).join(' · ');
+  const extra = [patient.insuranceProvider, patient.insuranceNumber, patient.ghanaCardNo && `Ghana Card ${patient.ghanaCardNo}`, patient.hinNumber && `HIN ${patient.hinNumber}`]
+    .filter(Boolean)
+    .join(' · ');
   return extra ? `${type} · ${extra}` : type;
+}
+
+export function hasGhanaNhiss(patient?: Pick<PatientRecord, 'insuranceType' | 'ghanaCardNo' | 'insuranceNumber'> | null) {
+  return patient?.insuranceType === 'GOVERNMENT' && Boolean(patient.ghanaCardNo || patient.insuranceNumber);
+}
+
+export function normalizeCcCode(code?: string | null): string {
+  return (code ?? '').trim().toUpperCase();
+}
+
+export function visitMissingRequiredCc(
+  patient?: Pick<PatientRecord, 'insuranceType' | 'ghanaCardNo' | 'insuranceNumber'> | null,
+  visit?: Pick<VisitRecord, 'nhisCcCode'> | null,
+  extraCode?: string | null,
+): boolean {
+  if (!hasGhanaNhiss(patient)) return false;
+  return !normalizeCcCode(extraCode || visit?.nhisCcCode);
 }
 
 export function formatDob(dateOfBirth?: string): string {

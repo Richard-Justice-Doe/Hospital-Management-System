@@ -1,12 +1,12 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useCare } from '../../context/CareContext';
 import PatientIdentity from '../../components/PatientIdentity';
 import PrintFolderButton from '../../components/PrintFolderButton';
 import RecordSavedModal from '../../components/RecordSavedModal';
+import { printFolderCover, printIdCard } from '../../workflow/printReceipt';
 import { ageFromDob, COPAYER_RELATIONSHIPS, INSURANCE_OPTIONS, insuranceLabel, stayLabel, staffRelationLabel } from '../../workflow/patientAdmin';
-import { nextFolderNoForDate } from '../../workflow/patientDb';
+import { folderYear, nextFolderNoForDate } from '../../workflow/patientDb';
 import type { CopayerRelationship, Gender, InsuranceType } from '../../workflow/types';
 
 const emptyForm = {
@@ -21,6 +21,9 @@ const emptyForm = {
   insuranceType: 'GOVERNMENT' as InsuranceType,
   insuranceProvider: 'NHIS',
   insuranceNumber: '',
+  ghanaCardNo: '',
+  hinNumber: '',
+  photoUrl: '',
   folderDate: '',
   hospitalNo: '',
   relatedStaffId: '',
@@ -30,7 +33,6 @@ const emptyForm = {
 export default function NewPatientPage() {
   const { user } = useAuth();
   const { state, createFolder } = useCare();
-  const navigate = useNavigate();
   const staffId = user?.id ?? 'staff-reception';
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
@@ -81,11 +83,20 @@ export default function NewPatientPage() {
     <div className="grid gap-6 lg:grid-cols-2">
       {saved && (
         <RecordSavedModal
-          title="Record saved"
-          detail={`Folder ${saved.hospitalNo} opened for ${saved.name}.${saved.pin ? ` Portal PIN ${saved.pin} — give this to the patient once.` : ''}`}
+          kind="folder"
+          patientName={saved.name}
+          detail={`Folder ${saved.hospitalNo}${saved.pin ? ` · portal PIN ${saved.pin}` : ''}. Print the ID card for the patient and the folder cover for Records.`}
+          nextLabel="Print ID card"
+          onNext={() => {
+            const created = state.patients.find((item) => item.hospitalNo === saved.hospitalNo);
+            if (created) printIdCard(created);
+          }}
+          secondaryLabel="Print folder cover"
+          onSecondary={() => {
+            const created = state.patients.find((item) => item.hospitalNo === saved.hospitalNo);
+            if (created) printFolderCover(created);
+          }}
           onClose={() => setSaved(null)}
-          secondaryLabel="Start a new visit"
-          onSecondary={() => navigate('/care/reception/visit')}
         />
       )}
       <form onSubmit={handleSubmit} className="space-y-3 rounded-xl border bg-white p-5">
@@ -101,7 +112,7 @@ export default function NewPatientPage() {
             <input
               required
               disabled={!form.folderDate}
-              placeholder={form.folderDate ? suggestedFolder || 'e.g. 2026/0000001' : 'Select the date first'}
+              placeholder={form.folderDate ? suggestedFolder || 'e.g. A1/2026' : 'Select the date first'}
               value={form.hospitalNo}
               onChange={(e) => setForm({ ...form, hospitalNo: e.target.value })}
               className="mt-1 w-full rounded-lg border px-3 py-2 font-mono text-sm disabled:bg-slate-50"
@@ -109,8 +120,8 @@ export default function NewPatientPage() {
           </label>
           <p className="text-xs text-slate-500 sm:col-span-2">
             {form.folderDate
-              ? `Type the number from today’s folder register. Suggested next number: ${suggestedFolder}. You may change it.`
-              : 'Choose the date the physical folder is opened. The folder number field then opens for you to enter it.'}
+              ? `Type A1/${folderYear(form.folderDate)} to A10000/${folderYear(form.folderDate)} from the folder register. Suggested next number: ${suggestedFolder}. You may change it.`
+              : 'Choose the date the physical folder is opened. Numbers restart at A1 each new year.'}
           </p>
           <label className="text-sm">
             <span className="font-medium text-slate-700">First name</span>
@@ -201,6 +212,34 @@ export default function NewPatientPage() {
               <input required value={form.insuranceNumber} onChange={(e) => setForm({ ...form, insuranceNumber: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" />
             </label>
           )}
+          {form.insuranceType === 'GOVERNMENT' && (
+            <>
+              <label className="text-sm">
+                <span className="font-medium text-slate-700">Ghana Card number</span>
+                <input value={form.ghanaCardNo} onChange={(e) => setForm({ ...form, ghanaCardNo: e.target.value })} placeholder="GHA-XXXXXXXXX-X" className="mt-1 w-full rounded-lg border px-3 py-2 font-mono text-sm" />
+              </label>
+              <label className="text-sm">
+                <span className="font-medium text-slate-700">HIN number</span>
+                <input value={form.hinNumber} onChange={(e) => setForm({ ...form, hinNumber: e.target.value })} placeholder="Health insurance HIN" className="mt-1 w-full rounded-lg border px-3 py-2 font-mono text-sm" />
+              </label>
+            </>
+          )}
+          <label className="text-sm sm:col-span-2">
+            <span className="font-medium text-slate-700">Folder photo</span>
+            <input
+              type="file"
+              accept="image/*"
+              className="mt-1 block w-full text-sm"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => setForm((cur) => ({ ...cur, photoUrl: String(reader.result ?? '') }));
+                reader.readAsDataURL(file);
+              }}
+            />
+            {form.photoUrl && <img src={form.photoUrl} alt="" className="mt-2 h-20 w-20 rounded-full object-cover" />}
+          </label>
           <fieldset className="sm:col-span-2">
             <legend className="text-sm font-medium text-slate-700">Related to a hospital worker?</legend>
             <p className="mt-1 text-xs text-slate-500">Staff and relatives can be waived on the visit billing tab.</p>
@@ -246,6 +285,11 @@ export default function NewPatientPage() {
 
       <section className="rounded-xl border bg-white p-5">
         <h3 className="font-medium">Registered patients</h3>
+        {state.patients.length === 0 && (
+          <p className="mt-4 rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+            No folders yet. Save a new patient on the left.
+          </p>
+        )}
         <ul className="mt-3 max-h-[36rem] space-y-2 overflow-auto">
           {state.patients.map((p) => (
             <li key={p.id} className="rounded-lg border border-slate-100 px-3 py-2">

@@ -25,7 +25,7 @@ describe('clinic AI agent', () => {
   it('finds a patient by name', () => {
     const reply = answerClinicQuestion(state, 'Find patient Amara');
     expect(reply.text).toMatch(/Amara Owusu/);
-    expect(reply.text).toMatch(/CH-00001/);
+    expect(reply.text).toMatch(/A1\/2026/);
   });
 
   it('lists open visits', () => {

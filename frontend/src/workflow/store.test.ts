@@ -1,6 +1,7 @@
 import { evaluateVitals } from './vitals';
 import { describe, expect, it } from 'vitest';
 import { allocatePatientFolder, applyVisitBilling, checkInByHospitalNo, checkInExisting, completeOrder, completeOrders, createPatientFolder, createStaff, payBill, payOrders, planCare, recordVitals, registerPatient, resetCareState, saveCareState, searchPatients, sendToDoctor, authenticateStaff } from './store';
+import { visitMissingRequiredCc } from './patientAdmin';
 import { unpaidOrders } from './billing';
 import { createSeedState } from './seed';
 
@@ -32,7 +33,7 @@ describe('care workflow store', () => {
       staffId: 'staff-reception',
     });
     expect(next.patients[0]?.firstName).toBe('Ada');
-    expect(next.patients[0]?.hospitalNo).toBe('CH-00006');
+    expect(next.patients[0]?.hospitalNo).toBe(`A6/${new Date().getFullYear()}`);
     expect(next.visits[0]?.stage).toBe('CHECKED_IN');
     expect(next.visits[0]?.clinic).toBe('GENERAL');
     expect(next.visits[0]?.orders.some((o) => o.serviceId === 'reg-folder')).toBe(false);
@@ -48,14 +49,14 @@ describe('care workflow store', () => {
       phone: '+1-555-0192',
       staffId: 'staff-reception',
     });
-    expect(next.patients[0]?.hospitalNo).toBe('CH-00006');
+    expect(next.patients[0]?.hospitalNo).toBe(`A6/${new Date().getFullYear()}`);
     expect(next.patients[0]?.folderCreatedAt).toBeTruthy();
     expect(next.visits.some((v) => v.patientId === next.patients[0]?.id)).toBe(false);
   });
 
   it('does not bill a second folder when a returning patient is checked in', () => {
     const seeded = createSeedState();
-    const next = checkInByHospitalNo(seeded, 'ch-00001', 'ANC review', 'staff-reception', 'MATERNITY');
+    const next = checkInByHospitalNo(seeded, 'A1/2026', 'ANC review', 'staff-reception', 'MATERNITY', undefined, 'CC-AMARA-2049183');
     const visit = next.visits.find((v) => v.patientId === 'pat-amara' && v.stage !== 'COMPLETED');
     expect(visit?.clinic).toBe('MATERNITY');
     expect(visit?.orders.some((o) => o.serviceId === 'reg-folder' && o.chargeable !== false)).toBe(false);
@@ -117,7 +118,7 @@ describe('care workflow store', () => {
       staffId: 'staff-reception',
     });
     expect('error' in first ? first.error : undefined).toBeUndefined();
-    expect('hospitalNo' in first ? first.hospitalNo : undefined).toBe('2026/0000012');
+    expect('hospitalNo' in first ? first.hospitalNo : undefined).toBe('A12/2026');
     const duplicate = allocatePatientFolder(first.state, {
       firstName: 'Yaw',
       lastName: 'Mensah',
@@ -129,14 +130,45 @@ describe('care workflow store', () => {
       staffId: 'staff-reception',
     });
     expect('error' in duplicate ? duplicate.error : '').toMatch(/already allocated/i);
+    const nextYear = allocatePatientFolder(first.state, {
+      firstName: 'Kojo',
+      lastName: 'Mensah',
+      age: 28,
+      gender: 'Male',
+      phone: '024 444 5557',
+      folderDate: '2027-01-02',
+      hospitalNo: '1',
+      staffId: 'staff-reception',
+    });
+    expect('hospitalNo' in nextYear ? nextYear.hospitalNo : undefined).toBe('A1/2027');
   });
 
   it('attaches a co-payer when opening a new visit', () => {
     const seeded = createSeedState();
-    const next = checkInExisting(seeded, 'pat-amara', 'ANC review', 'staff-reception', 'MATERNITY', 'pay-amara-spouse');
+    const next = checkInExisting(seeded, 'pat-amara', 'ANC review', 'staff-reception', 'MATERNITY', 'pay-amara-spouse', 'CC-AMARA-2049183');
     const visit = next.visits.find((v) => v.patientId === 'pat-amara' && v.stage !== 'COMPLETED');
     expect(visit?.copayerId).toBe('pay-amara-spouse');
     expect(visit?.clinic).toBe('MATERNITY');
+    expect(visit?.nhisCcCode).toBe('CC-AMARA-2049183');
+  });
+
+  it('will not check in or bill an NHIS / Ghana Card patient without a CC code', () => {
+    const seeded = createSeedState();
+    const blocked = checkInExisting(seeded, 'pat-amara', 'ANC review', 'staff-reception', 'MATERNITY');
+    expect(blocked.visits.some((v) => v.patientId === 'pat-amara' && v.stage !== 'COMPLETED')).toBe(false);
+    const withoutCc = {
+      ...seeded,
+      visits: seeded.visits.map((visit) => (visit.id === 'vis-nina' ? { ...visit, nhisCcCode: undefined } : visit)),
+    };
+    const nina = withoutCc.patients.find((p) => p.id === 'pat-nina');
+    const ninaVisit = withoutCc.visits.find((v) => v.id === 'vis-nina');
+    expect(visitMissingRequiredCc(nina, ninaVisit)).toBe(true);
+    const billed = applyVisitBilling(withoutCc, 'vis-nina', {
+      billable: true,
+      serviceIds: ['reg-folder'],
+      staffId: 'staff-reception',
+    });
+    expect(billed.visits.find((v) => v.id === 'vis-nina')?.billingDecidedAt).toBeUndefined();
   });
 
   it('lets reception check a patient into the eye clinic', () => {
@@ -225,7 +257,7 @@ describe('care workflow store', () => {
       role: 'NURSE',
       password: 'NursePass1!',
     });
-    expect(next.staff.some((s) => s.email === 'new.nurse@clinic.local')).toBe(true);
+    expect(next.staff.some((s) => s.email === 'new.nurse@clinic.local' && s.username === 'new.nurse')).toBe(true);
   });
 
   it('orders lab work then bills in Ghana cedis', () => {
@@ -303,6 +335,8 @@ describe('care workflow store', () => {
     expect(ent !== 'invalid' && ent && ent.role).toBe('ENT_DOCTOR');
     expect(entNurse !== 'invalid' && entNurse && entNurse.role).toBe('ENT_NURSE');
     expect(authenticateStaff(seeded, 'nurse@clinic.local', 'wrong')).toBe('invalid');
+    const byName = authenticateStaff(seeded, 'eye', 'EyeDoc1!');
+    expect(byName !== 'invalid' && byName && byName.email).toBe('eye@clinic.local');
   });
 
   it('lets reception collect folder fees without closing the visit', () => {
@@ -315,8 +349,8 @@ describe('care workflow store', () => {
 
   it('looks up a returning patient by hospital number', () => {
     const seeded = createSeedState();
-    expect(searchPatients(seeded.patients, 'CH-00002')[0]?.lastName).toBe('Mensah');
-    const returned = checkInByHospitalNo(seeded, 'ch-00001', 'ANC review', 'staff-reception');
+    expect(searchPatients(seeded.patients, 'A2/2026')[0]?.lastName).toBe('Mensah');
+    const returned = checkInByHospitalNo(seeded, 'A1/2026', 'ANC review', 'staff-reception', 'GENERAL', undefined, 'CC-AMARA-2049183');
     const open = returned.visits.filter((v) => v.patientId === 'pat-amara' && v.stage !== 'COMPLETED');
     expect(open).toHaveLength(1);
     expect(open[0]?.reason).toBe('ANC review');
@@ -335,7 +369,7 @@ describe('care workflow store', () => {
     saveCareState(registered);
     const reset = resetCareState();
     const ada = reset.patients.find((p) => p.firstName === 'Ada' && p.lastName === 'Kofi');
-    expect(ada?.hospitalNo).toBe('CH-00006');
+    expect(ada?.hospitalNo).toBe(`A6/${new Date().getFullYear()}`);
     expect(new Set(reset.patients.map((p) => p.hospitalNo)).size).toBe(reset.patients.length);
   });
 });

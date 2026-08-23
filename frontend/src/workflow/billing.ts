@@ -1,5 +1,20 @@
 import type { CareState, Department, ServiceOrder, StaffRole, VisitRecord } from './types';
-import { ROLE_BILLABLE_DEPARTMENTS } from './types';
+import { ROLE_BILLABLE_DEPARTMENTS, matronDepartments } from './types';
+
+export function canReceivePayment(role?: StaffRole | null): boolean {
+  return role === 'CASHIER';
+}
+
+export function canRemoveBill(
+  user?: { role: StaffRole; inChargeOf?: Department } | null,
+  department?: Department,
+): boolean {
+  if (!user || user.role === 'CASHIER') return false;
+  if (user.role === 'ADMIN') return true;
+  if (user.role === 'MATRON') return !department || matronDepartments().includes(department);
+  if (!user.inChargeOf) return false;
+  return !department || user.inChargeOf === department;
+}
 
 export type CollectionPeriod = 'day' | 'month' | 'year' | 'all';
 

@@ -1,6 +1,8 @@
 import { createSeedState } from './seed';
 import { describe, expect, it } from 'vitest';
 import {
+  addAllergy,
+  addProblem,
   afterLabResults,
   evaluateCds,
   findDuplicatePatients,
@@ -59,7 +61,7 @@ describe('HIS layer', () => {
 
   it('merges duplicate charts onto the surviving MRN', () => {
     const seeded = createSeedState();
-    const clone = { ...seeded.patients[0], id: 'pat-amara-dup', hospitalNo: 'CH-00999' };
+    const clone = { ...seeded.patients[0], id: 'pat-amara-dup', hospitalNo: 'A999/2026' };
     const withDup = { ...seeded, patients: [clone, ...seeded.patients] };
     expect(findDuplicatePatients(withDup.patients, clone).some((p) => p.id === 'pat-amara')).toBe(true);
     const merged = mergePatients(withDup, 'pat-amara', 'pat-amara-dup', 'staff-reception');
@@ -76,11 +78,40 @@ describe('HIS layer', () => {
     expect(next.auditLog[0]?.action).toBe('break_glass');
   });
 
+  it('lets only a doctor add allergies and problems on the chart', () => {
+    const seeded = createSeedState();
+    const asNurse = addAllergy(seeded, {
+      patientId: 'pat-amara',
+      substance: 'Peanuts',
+      reaction: 'Hives',
+      severity: 'moderate',
+      recordedBy: 'staff-nurse',
+    });
+    expect(asNurse.allergies.some((item) => item.substance === 'Peanuts')).toBe(false);
+    const asDoctor = addAllergy(seeded, {
+      patientId: 'pat-amara',
+      substance: 'Peanuts',
+      reaction: 'Hives',
+      severity: 'moderate',
+      recordedBy: 'staff-doctor',
+    });
+    expect(asDoctor.allergies.some((item) => item.substance === 'Peanuts')).toBe(true);
+    expect(addProblem(seeded, { patientId: 'pat-amara', name: 'Asthma', recordedBy: 'staff-nurse' }).problems.some((item) => item.name === 'Asthma')).toBe(false);
+    expect(addProblem(seeded, { patientId: 'pat-amara', name: 'Asthma', recordedBy: 'staff-doctor' }).problems.some((item) => item.name === 'Asthma')).toBe(true);
+    expect(addAllergy(seeded, {
+      patientId: 'pat-amara',
+      substance: 'Iodine',
+      reaction: 'Rash',
+      severity: 'mild',
+      recordedBy: 'staff-admin',
+    }).allergies.some((item) => item.substance === 'Iodine')).toBe(true);
+  });
+
   it('lets in-charge schedule a department shift and notify the worker', () => {
     const result = scheduleShift(createSeedState(), {
       staffId: 'staff-lab',
       department: 'LAB',
-      day: '2026-08-22',
+      day: '2026-12-01',
       startHour: 7,
       endHour: 15,
       createdBy: 'staff-lab-head',
@@ -98,5 +129,18 @@ describe('HIS layer', () => {
     const claimed = upsertClaim(seeded, { visitId: 'vis-amara', status: 'SUBMITTED' });
     expect(claimed.claims[0]?.claimNo).toMatch(/^CLM-/);
     expect(qualityMetrics(claimed).visits).toBeGreaterThan(0);
+  });
+
+  it('will not submit an NHIS claim without a CC code', () => {
+    const seeded = createSeedState();
+    const missing = {
+      ...seeded,
+      visits: seeded.visits.map((visit) => (visit.id === 'vis-amara' ? { ...visit, nhisCcCode: undefined } : visit)),
+      claims: seeded.claims.map((claim) =>
+        claim.visitId === 'vis-amara' ? { ...claim, status: 'DRAFT' as const, submittedAt: undefined } : claim,
+      ),
+    };
+    const claimed = upsertClaim(missing, { visitId: 'vis-amara', status: 'SUBMITTED' });
+    expect(claimed.claims.find((claim) => claim.visitId === 'vis-amara')?.status).toBe('DRAFT');
   });
 });

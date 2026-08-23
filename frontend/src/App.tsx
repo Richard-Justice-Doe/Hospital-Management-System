@@ -2,6 +2,7 @@ import { type ReactNode } from 'react';
 import { Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import AppShell from './components/AppShell';
+import { DeskProvider } from './context/DeskContext';
 import DepartmentDashboardPage from './pages/DepartmentDashboardPage';
 import AssistantPage from './pages/AssistantPage';
 import ReceptionLayout from './pages/reception/ReceptionLayout';
@@ -13,6 +14,10 @@ import NursingPage from './pages/NursingPage';
 import DoctorCarePage from './pages/DoctorCarePage';
 import PharmacyPage, { DentalPage, EntPage, EyePage, LabPage, MaternityPage, PhysioPage, XrayPage } from './pages/PharmacyPage';
 import BillingPage from './pages/BillingPage';
+import ClaimsDeskPage from './pages/ClaimsDeskPage';
+import StoresPage from './pages/StoresPage';
+import ProcurementPage from './pages/ProcurementPage';
+import ItDeskPage from './pages/ItDeskPage';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminOverviewPage from './pages/admin/AdminOverviewPage';
 import AdminStaffPage from './pages/admin/AdminStaffPage';
@@ -69,7 +74,9 @@ export default function App() {
       <Route
         element={
           <ProtectedRoute>
-            <AppShell />
+            <DeskProvider>
+              <AppShell />
+            </DeskProvider>
           </ProtectedRoute>
         }
       >
@@ -102,6 +109,10 @@ export default function App() {
         <Route path="/care/dental" element={gated('dental', <DentalPage />)} />
         <Route path="/care/maternity" element={gated('maternity', <MaternityPage />)} />
         <Route path="/care/billing" element={gated(['billing', 'collections'], <BillingPage />)} />
+        <Route path="/care/claims" element={gated('claims', <ClaimsDeskPage />)} />
+        <Route path="/care/stores" element={gated('stores', <StoresPage />)} />
+        <Route path="/care/procurement" element={gated('procurement', <ProcurementPage />)} />
+        <Route path="/care/it" element={gated('it', <ItDeskPage />)} />
         <Route path="/care/shifts" element={gated('shifts', <ShiftsPage />)} />
         <Route path="/care/admin" element={gated('admin', <AdminLayout />)}>
           <Route index element={<Navigate to="overview" replace />} />

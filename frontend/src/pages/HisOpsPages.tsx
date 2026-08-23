@@ -5,13 +5,14 @@ import { useCare } from '../context/CareContext';
 import PatientIdentity from '../components/PatientIdentity';
 import VisitChargeSummary from '../components/VisitChargeSummary';
 import { CLINIC_LABELS, formatGhs } from '../workflow/catalog';
+import { isLowStock, isOutOfStock } from '../workflow/pharmacyStock';
+import RecordSavedModal from '../components/RecordSavedModal';
+import type { PromptKind } from '../components/ActionPrompt';
 import {
   addIo,
   addWaitlist,
   admitVisit,
-  arAging,
   bookAppointment,
-  buildClaimPack,
   dischargeVisit,
   dispenseStock,
   downloadText,
@@ -26,8 +27,6 @@ import {
   setAppointmentStatus,
   transferBed,
   updateOt,
-  upsertClaim,
-  verifyEligibility,
 } from '../workflow/his';
 import type { AppointmentStatus, ClinicId, StaffRole } from '../workflow/types';
 import { canControlDepartment } from '../workflow/types';
@@ -183,11 +182,15 @@ export function WardPage() {
   const staffId = user?.id ?? 'staff-nurse';
   const occ = occupancy(state);
   const isHead = canControlDepartment(user, 'WARD');
+  const [prompt, setPrompt] = useState<{ kind: PromptKind; name: string; detail: string } | null>(null);
   return (
     <Shell title="Ward / ADT" hint="Beds, admit-transfer-discharge, MAR, and intake/output.">
+      {prompt && (
+        <RecordSavedModal kind={prompt.kind} patientName={prompt.name} detail={prompt.detail} onClose={() => setPrompt(null)} />
+      )}
       <DepartmentShiftPanel department="WARD" />
       {isHead && (
-        <DepartmentBillsPanel department="ALL" visits={state.visits} patients={state.patients} onRemove={removeFromBill} />
+        <DepartmentBillsPanel department="WARD" visits={state.visits} patients={state.patients} onRemove={removeFromBill} />
       )}
       <div className="grid gap-3 sm:grid-cols-3">
         {occ.map((row) => (
@@ -210,16 +213,34 @@ export function WardPage() {
                   {bed.label} · {bed.status}
                 </p>
                 {patient && <PatientIdentity patient={patient} />}
-                {visit && bed.status === 'OCCUPIED' && (
+                {visit && patient && bed.status === 'OCCUPIED' && (
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <button type="button" className={btnSecondary} onClick={() => updateCare((s) => dischargeVisit(s, visit.id, staffId))}>
+                    <button
+                      type="button"
+                      className={btnSecondary}
+                      onClick={() => {
+                        updateCare((s) => dischargeVisit(s, visit.id, staffId));
+                        setPrompt({
+                          kind: 'work_done',
+                          name: `${patient.firstName} ${patient.lastName}`,
+                          detail: 'Patient is discharged from the ward.',
+                        });
+                      }}
+                    >
                       Discharge
                     </button>
                     <select
                       className={inputClass}
                       defaultValue=""
                       onChange={(e) => {
-                        if (e.target.value) updateCare((s) => transferBed(s, visit.id, e.target.value, staffId));
+                        if (e.target.value) {
+                          updateCare((s) => transferBed(s, visit.id, e.target.value, staffId));
+                          setPrompt({
+                            kind: 'sent_ward',
+                            name: `${patient.firstName} ${patient.lastName}`,
+                            detail: 'Patient is moved to a new bed. Take them there now.',
+                          });
+                        }
                       }}
                     >
                       <option value="">Transfer…</option>
@@ -234,7 +255,7 @@ export function WardPage() {
                 {isHead && visit && (
                   <VisitChargeSummary
                     visit={visit}
-                    managedDepartment={undefined}
+                    managedDepartment="WARD"
                     onRemoveCharge={(orderId) => removeFromBill(visit.id, orderId)}
                   />
                 )}
@@ -254,7 +275,18 @@ export function WardPage() {
                   <span>
                     <PatientIdentity patient={p} /> · {v.reason}
                   </span>
-                  <button type="button" className={btnPrimary} onClick={() => updateCare((s) => admitVisit(s, v.id, staffId, 'WARD'))}>
+                  <button
+                    type="button"
+                    className={btnPrimary}
+                    onClick={() => {
+                      updateCare((s) => admitVisit(s, v.id, staffId, 'WARD'));
+                      setPrompt({
+                        kind: 'sent_ward',
+                        name: p ? `${p.firstName} ${p.lastName}` : 'Patient',
+                        detail: 'Patient is admitted. Take them to the ward bed.',
+                      });
+                    }}
+                  >
                     Admit
                   </button>
                 </li>
@@ -344,11 +376,15 @@ export function TheatrePage() {
   const { user } = useAuth();
   const { state, updateCare, removeFromBill, toggleService, updatePrice } = useCare();
   const isHead = canControlDepartment(user, 'THEATRE');
+  const [prompt, setPrompt] = useState<{ kind: PromptKind; name: string; detail: string } | null>(null);
   return (
     <Shell title="Theatre / OT" hint="OT board, pre-op checklist, surgical notes, anaesthesia.">
+      {prompt && (
+        <RecordSavedModal kind={prompt.kind} patientName={prompt.name} detail={prompt.detail} onClose={() => setPrompt(null)} />
+      )}
       <DepartmentShiftPanel department="THEATRE" />
       {isHead && (
-        <DepartmentBillsPanel department="ALL" visits={state.visits} patients={state.patients} onRemove={removeFromBill} />
+        <DepartmentBillsPanel department="THEATRE" visits={state.visits} patients={state.patients} onRemove={removeFromBill} />
       )}
       {state.otCases.length === 0 && <p className="text-sm text-slate-500">No OT cases. Order a theatre service on a consult to schedule.</p>}
       {state.otCases.map((c) => {
@@ -364,7 +400,22 @@ export function TheatrePage() {
             <input className={`${inputClass} mt-2`} value={c.anesthesia} placeholder="Anaesthesia" onChange={(e) => updateCare((s) => updateOt(s, c.id, { anesthesia: e.target.value }))} />
             <div className="mt-2 space-x-2">
               {(['IN_THEATRE', 'RECOVERY', 'DONE'] as const).map((status) => (
-                <button key={status} type="button" className={btnSecondary} onClick={() => updateCare((s) => updateOt(s, c.id, { status }))}>
+                <button
+                  key={status}
+                  type="button"
+                  className={btnSecondary}
+                  onClick={() => {
+                    updateCare((s) => updateOt(s, c.id, { status }));
+                    const name = p ? `${p.firstName} ${p.lastName}` : 'Patient';
+                    if (status === 'IN_THEATRE') {
+                      setPrompt({ kind: 'sent_theatre', name, detail: 'Take the patient into theatre now.' });
+                    } else if (status === 'RECOVERY') {
+                      setPrompt({ kind: 'work_done', name, detail: 'Surgery is finished. Take them to recovery.' });
+                    } else {
+                      setPrompt({ kind: 'sent_ward', name, detail: 'Theatre is done. Take them back to the ward.' });
+                    }
+                  }}
+                >
                   {status}
                 </button>
               ))}
@@ -374,7 +425,7 @@ export function TheatrePage() {
               return visit ? (
                 <VisitChargeSummary
                   visit={visit}
-                  managedDepartment={undefined}
+                  managedDepartment="THEATRE"
                   onRemoveCharge={(orderId) => removeFromBill(visit.id, orderId)}
                 />
               ) : null;
@@ -394,8 +445,12 @@ export function TriagePage() {
   const { state, updateCare } = useCare();
   const staffId = user?.id ?? 'staff-nurse';
   const [esi, setEsi] = useState<1 | 2 | 3 | 4 | 5>(3);
+  const [prompt, setPrompt] = useState<{ kind: PromptKind; name: string; detail: string } | null>(null);
   return (
     <Shell title="Emergency / triage" hint="ESI 1–5. ESI 1–2 auto-assigns an ED bed. Fast-track uses the Emergency clinic.">
+      {prompt && (
+        <RecordSavedModal kind={prompt.kind} patientName={prompt.name} detail={prompt.detail} onClose={() => setPrompt(null)} />
+      )}
       <Card title="Open visits">
         <ul className="space-y-3">
           {state.visits
@@ -419,7 +474,15 @@ export function TriagePage() {
                     <button
                       type="button"
                       className={btnPrimary}
-                      onClick={() => updateCare((s) => recordTriage(s, { visitId: v.id, esi, complaint: v.reason, staffId }))}
+                      onClick={() => {
+                        updateCare((s) => recordTriage(s, { visitId: v.id, esi, complaint: v.reason, staffId }));
+                        const name = p ? `${p.firstName} ${p.lastName}` : 'Patient';
+                        setPrompt(
+                          esi <= 2
+                            ? { kind: 'sent_ward', name, detail: 'Emergency. Take them to an ED bed now.' }
+                            : { kind: 'sent_doctor', name, detail: 'Triage saved. Send them to the doctor.' },
+                        );
+                      }}
                     >
                       Score
                     </button>
@@ -433,92 +496,58 @@ export function TriagePage() {
   );
 }
 
-export function ClaimsPage() {
-  const { state, updateCare } = useCare();
-  const aging = arAging(state);
-  return (
-    <Shell title="Insurance & claims" hint="Eligibility, submissions, and remittances.">
-      <div className="grid gap-3 sm:grid-cols-4">
-        {Object.entries(aging).map(([k, v]) => (
-          <div key={k} className="rounded-xl border bg-white p-4">
-            <p className="text-xs uppercase text-slate-500">{k}</p>
-            <p className="text-lg font-semibold">{formatGhs(v)}</p>
-          </div>
-        ))}
-      </div>
-      <Card title="Visits">
-        <ul className="space-y-3 text-sm">
-          {state.visits
-            .filter((v) => v.stage !== 'CHECKED_IN')
-            .slice(0, 20)
-            .map((v) => {
-              const p = state.patients.find((x) => x.id === v.patientId);
-              const claim = state.claims.find((c) => c.visitId === v.id);
-              const elig = p ? verifyEligibility(state, p.id) : { ok: false, detail: '' };
-              return (
-                <li key={v.id} className="rounded-lg border p-3">
-                  <PatientIdentity patient={p} />
-                  <p className="text-slate-500">{elig.detail}</p>
-                  <p>Claim: {claim ? `${claim.claimNo} ${claim.status}` : 'none'}</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button type="button" className={btnSecondary} onClick={() => updateCare((s) => upsertClaim(s, { visitId: v.id, status: 'ELIGIBLE' }))}>
-                      Eligibility
-                    </button>
-                    <button type="button" className={btnSecondary} onClick={() => updateCare((s) => upsertClaim(s, { visitId: v.id, status: 'SUBMITTED' }))}>
-                      Submit claim
-                    </button>
-                    <button type="button" className={btnSecondary} onClick={() => updateCare((s) => upsertClaim(s, { visitId: v.id, status: 'PAID' }))}>
-                      Record remittance
-                    </button>
-                    <button type="button" className={btnSecondary} onClick={() => updateCare((s) => upsertClaim(s, { visitId: v.id, status: 'DENIED', denialReason: 'Need more documentation' }))}>
-                      Deny
-                    </button>
-                    <button
-                      type="button"
-                      className={btnSecondary}
-                      onClick={() =>
-                        downloadText(`${v.id}-claim.json`, JSON.stringify(buildClaimPack(state, v.id), null, 2), 'application/json')
-                      }
-                    >
-                      Export claim file
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-        </ul>
-      </Card>
-    </Shell>
-  );
-}
+export { default as ClaimsPage } from './ClaimsDeskPage';
 
 export function InventoryPage() {
   const { user } = useAuth();
   const { state, updateCare } = useCare();
   return (
-    <Shell title="Inventory & assets" hint="Pharmacy stock, reorder points, vendors, equipment maintenance.">
+    <Shell title="Inventory & assets" hint="Pharmacy stock stays here. Consumables are on Stores. Orders are on Procurement.">
+      <p className="text-sm">
+        <Link className="text-clinic-700 hover:underline" to="/care/stores">
+          Open stores
+        </Link>
+        {' · '}
+        <Link className="text-clinic-700 hover:underline" to="/care/procurement">
+          Open procurement
+        </Link>
+      </p>
       <Card title="Drug stock">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="text-slate-500">
               <th>Item</th>
               <th>Qty</th>
+              <th>Status</th>
               <th>Expires</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {state.drugStock.map((d) => (
-              <tr key={d.id} className="border-t">
+            {(state.drugStock ?? []).map((d) => {
+              const empty = isOutOfStock(d);
+              const low = isLowStock(d);
+              return (
+              <tr key={d.id} className={`border-t ${empty ? 'bg-red-50' : low ? 'bg-amber-50' : ''}`}>
                 <td className="py-1">
                   {d.name} {d.controlled ? '(controlled)' : ''}
                 </td>
                 <td>{d.quantity}</td>
+                <td>
+                  {empty ? (
+                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">Out of stock</span>
+                  ) : low ? (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Low stock</span>
+                  ) : (
+                    <span className="text-xs text-slate-500">In stock</span>
+                  )}
+                </td>
                 <td>{d.expiresOn}</td>
                 <td>
                   <button
                     type="button"
-                    className="text-clinic-700"
+                    disabled={empty}
+                    className="text-clinic-700 disabled:cursor-not-allowed disabled:text-slate-400"
                     onClick={() =>
                       updateCare((s) =>
                         dispenseStock(s, {
@@ -535,7 +564,8 @@ export function InventoryPage() {
                   </button>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </Card>
@@ -560,7 +590,9 @@ export function InventoryPage() {
         <ul className="text-sm">
           {state.assets.map((a) => (
             <li key={a.id}>
-              {a.name} @ {a.location} · next PM {a.nextMaintenance}
+              {a.name} @ {a.location}
+              {a.kind ? ` · ${a.kind}` : ''}
+              {a.nextMaintenance ? ` · next PM ${a.nextMaintenance}` : ''}
             </li>
           ))}
         </ul>
@@ -762,7 +794,12 @@ export function MergePage() {
   );
   return (
     <div>
-      {pairs.length === 0 && <p className="text-sm text-slate-500">No duplicate folders.</p>}
+      {pairs.length === 0 && (
+        <div className="rounded-xl border border-dashed bg-white px-4 py-8 text-center">
+          <p className="font-medium text-slate-700">No duplicate folders</p>
+          <p className="mt-1 text-sm text-slate-500">Same name, date of birth, or phone will appear here to merge.</p>
+        </div>
+      )}
       <ul className="mt-4 space-y-3">
         {pairs.map(({ a, b }) => (
           <li key={`${a.id}-${b.id}`} className="rounded-xl border bg-white p-4 text-sm">
@@ -786,8 +823,9 @@ export function MergePage() {
 export function NotificationsBanner() {
   const { user } = useAuth();
   const { state, updateCare } = useCare();
-  const items = state.notifications
+  const items = (state.notifications ?? [])
     .filter((n) => !n.read && (n.staffId === user?.id || (n.audience === 'staff' && !n.staffId)))
+    .sort((a, b) => Number(b.kind === 'stock') - Number(a.kind === 'stock'))
     .slice(0, 3);
   if (items.length === 0) return null;
   return (

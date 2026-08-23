@@ -43,8 +43,13 @@ export type PageKey =
   | 'maternity'
   | 'billing'
   | 'collections'
+  | 'claims'
+  | 'stores'
+  | 'procurement'
+  | 'it'
   | 'messages'
   | 'shifts'
+  | 'clinical'
   | 'admin';
 
 export type StaffRole =
@@ -63,7 +68,12 @@ export type StaffRole =
   | 'ENT_DOCTOR'
   | 'ENT_NURSE'
   | 'DENTIST'
-  | 'MIDWIFE';
+  | 'MIDWIFE'
+  | 'MATRON'
+  | 'CLAIMS'
+  | 'STOREKEEPER'
+  | 'PROCUREMENT'
+  | 'IT';
 
 export type ClinicId =
   | 'GENERAL'
@@ -89,13 +99,19 @@ export type Department =
   | 'ENT'
   | 'MATERNITY'
   | 'THEATRE'
-  | 'WARD';
+  | 'WARD'
+  | 'CLAIMS'
+  | 'STORES'
+  | 'PROCUREMENT'
+  | 'IT';
 
 export type OrderStatus = 'ORDERED' | 'DONE';
 
 export interface StaffAccount {
   id: string;
   email: string;
+  /** Short sign-in name, e.g. admin. Email still works. */
+  username?: string;
   firstName: string;
   lastName: string;
   role: StaffRole;
@@ -114,6 +130,8 @@ export interface StaffAccount {
   lastAccessReviewAt?: string;
   /** Mobile number for shift SMS. Ghana format e.g. 024 111 0101. */
   phone?: string;
+  /** Monthly pay in Ghana cedis. Accountant sets and pays this. */
+  salaryGhs?: number;
 }
 
 export interface PatientRecord {
@@ -131,6 +149,9 @@ export interface PatientRecord {
   insuranceType?: InsuranceType;
   insuranceProvider?: string;
   insuranceNumber?: string;
+  ghanaCardNo?: string;
+  hinNumber?: string;
+  photoUrl?: string;
   createdAt: string;
   folderCreatedAt?: string;
   folderCreatedBy?: string;
@@ -203,6 +224,89 @@ export interface LabLine {
   flag: LabFlag;
 }
 
+export type PayMethod = 'CASH' | 'MOMO' | 'NHIS' | 'CARD' | 'BANK';
+
+export type FinanceReasonCode = 'STAFF' | 'HARDSHIP' | 'ERROR' | 'BAD_DEBT' | 'DUPLICATE' | 'OTHER';
+export type FinanceAdjustKind = 'DISCOUNT' | 'WRITE_OFF' | 'VOID' | 'REFUND';
+export type FinanceAdjustStatus = 'PENDING' | 'APPROVED' | 'DENIED';
+export type ExpenseCategory = 'PHARMACY' | 'EQUIPMENT' | 'UTILITIES' | 'PAYROLL' | 'OTHER';
+export type VendorInvoiceStatus = 'DRAFT' | 'MATCHED' | 'APPROVED' | 'PAID';
+export type AgingBucket = '0-30' | '31-60' | '61-90' | '90+';
+
+export interface FinanceAdjustmentRecord {
+  id: string;
+  visitId: string;
+  kind: FinanceAdjustKind;
+  amountGhs: number;
+  reasonCode: FinanceReasonCode;
+  reason: string;
+  status: FinanceAdjustStatus;
+  requestedBy: string;
+  requestedAt: string;
+  approvedBy?: string;
+  approvedAt?: string;
+}
+
+export interface PaymentPlanRecord {
+  id: string;
+  visitId: string;
+  instalments: number;
+  note: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface VendorInvoiceRecord {
+  id: string;
+  invoiceNo: string;
+  vendorId: string;
+  poId?: string;
+  amountGhs: number;
+  category: ExpenseCategory;
+  status: VendorInvoiceStatus;
+  at: string;
+  receivedAt?: string;
+  approvedBy?: string;
+  paidAt?: string;
+  paidBy?: string;
+  note?: string;
+}
+
+export interface BankTxnRecord {
+  id: string;
+  at: string;
+  amountGhs: number;
+  direction: 'IN' | 'OUT';
+  reference: string;
+  matchedId?: string;
+  matchedKind?: 'RECEIPT' | 'CLAIM' | 'VENDOR' | 'PAYROLL';
+}
+
+export interface PeriodLockRecord {
+  id: string;
+  period: string;
+  lockedBy: string;
+  lockedAt: string;
+}
+
+export interface PreAuthRecord {
+  id: string;
+  visitId: string;
+  payer: string;
+  ref: string;
+  status: 'PENDING' | 'APPROVED' | 'DENIED';
+  at: string;
+}
+
+export interface EobRecord {
+  id: string;
+  claimId: string;
+  amountGhs: number;
+  paidGhs: number;
+  ref: string;
+  at: string;
+}
+
 export interface VisitRecord {
   id: string;
   patientId: string;
@@ -237,11 +341,56 @@ export interface VisitRecord {
   soapObjective?: string;
   soapAssessment?: string;
   soapPlan?: string;
+  paymentMethod?: PayMethod;
+  payLaterReason?: string;
+  nhisCcCode?: string;
+  witnessId?: string;
+  /** Daily walk-in ticket number, reset each day. */
+  queueNo?: number;
+}
+
+export interface BudgetRecord {
+  id: string;
+  period: string;
+  allocatedGhs: number;
+  note?: string;
+  setBy: string;
+  at: string;
+}
+
+export interface PayrollRecord {
+  id: string;
+  staffId: string;
+  period: string;
+  amountGhs: number;
+  paidAt: string;
+  paidBy: string;
+  note?: string;
+}
+
+export interface CashCloseRecord {
+  id: string;
+  date: string;
+  staffId: string;
+  counted: number;
+  systemTotal: number;
+  note?: string;
+  at: string;
+}
+
+export interface HandoverRecord {
+  id: string;
+  department: Department;
+  note: string;
+  staffId: string;
+  at: string;
 }
 
 export type NoteSensitivity = 'GENERAL' | 'PSYCH' | 'SUBSTANCE';
 export type AppointmentStatus = 'BOOKED' | 'CONFIRMED' | 'CHECKED_IN' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
 export type ClaimStatus = 'DRAFT' | 'ELIGIBLE' | 'SUBMITTED' | 'PAID' | 'DENIED';
+export type ClaimScheme = 'NHIS' | 'PRIVATE';
+export type PurchaseStatus = 'REQUESTED' | 'ORDERED' | 'RECEIVED' | 'CANCELLED';
 export type BedStatus = 'FREE' | 'OCCUPIED' | 'CLEANING';
 export type AdtType = 'ADMIT' | 'TRANSFER' | 'DISCHARGE';
 export type MarStatus = 'DUE' | 'GIVEN' | 'HELD' | 'REFUSED';
@@ -459,11 +608,44 @@ export interface ClaimRecord {
   claimNo: string;
   status: ClaimStatus;
   amountGhs: number;
+  scheme?: ClaimScheme;
   denialReason?: string;
   updatedAt: string;
   submittedAt?: string;
   submissionRef?: string;
   eligibilityDetail?: string;
+  accountsReceivedAt?: string;
+  accountsReceivedBy?: string;
+}
+
+export interface StoreIssueRecord {
+  id: string;
+  supplyId: string;
+  quantity: number;
+  toDepartment: Department;
+  issuedBy: string;
+  at: string;
+  note?: string;
+}
+
+export interface PurchaseOrderRecord {
+  id: string;
+  poNo: string;
+  itemName: string;
+  quantity: number;
+  vendorId: string;
+  department: Department;
+  status: PurchaseStatus;
+  requestedBy: string;
+  requestedAt: string;
+  orderedAt?: string;
+  receivedAt?: string;
+  receivedBy?: string;
+  note?: string;
+  stockId?: string;
+  amountGhs?: number;
+  accountsReceivedAt?: string;
+  accountsReceivedBy?: string;
 }
 
 export interface NotificationRecord {
@@ -473,7 +655,7 @@ export interface NotificationRecord {
   staffId?: string;
   title: string;
   body: string;
-  kind: 'reminder' | 'lab' | 'billing' | 'critical' | 'system' | 'shift';
+  kind: 'reminder' | 'lab' | 'billing' | 'critical' | 'system' | 'shift' | 'stock';
   at: string;
   read?: boolean;
   deliveredAt?: string;
@@ -523,11 +705,44 @@ export interface VendorRecord {
   phone: string;
 }
 
+export type ItTicketStatus = 'OPEN' | 'IN_PROGRESS' | 'WAITING' | 'RESOLVED';
+export type ItTicketPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+export type ItTicketCategory = 'LOGIN' | 'PRINTER' | 'NETWORK' | 'HIS' | 'HARDWARE' | 'OTHER';
+export type ItAssetKind = 'PC' | 'PRINTER' | 'PHONE' | 'LICENSE' | 'OTHER';
+export type ItAssetStatus = 'IN_USE' | 'SPARE' | 'REPAIR' | 'RETIRED';
+
+export interface ItTicketRecord {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  openedByStaffId: string;
+  assignedToStaffId?: string;
+  category: ItTicketCategory;
+  priority: ItTicketPriority;
+  status: ItTicketStatus;
+  title: string;
+  detail: string;
+  location?: string;
+  resolution?: string;
+}
+
+export interface FailedLoginRecord {
+  id: string;
+  at: string;
+  login: string;
+  reason: string;
+}
+
 export interface AssetRecord {
   id: string;
   name: string;
   location: string;
-  nextMaintenance: string;
+  nextMaintenance?: string;
+  kind?: ItAssetKind;
+  assignedStaffId?: string;
+  serial?: string;
+  licenseKey?: string;
+  status?: ItAssetStatus;
 }
 
 export interface ShiftRecord {
@@ -572,11 +787,29 @@ export interface HisCollections {
   auditLog: AuditEvent[];
   breakGlass: BreakGlassRecord[];
   supplies: SupplyItemRecord[];
+  storeIssues: StoreIssueRecord[];
+  purchaseOrders: PurchaseOrderRecord[];
   vendors: VendorRecord[];
   assets: AssetRecord[];
+  itTickets: ItTicketRecord[];
+  failedLogins: FailedLoginRecord[];
+  lastSavedAt?: string;
   shifts: ShiftRecord[];
+  cashCloses: CashCloseRecord[];
+  budgets: BudgetRecord[];
+  payroll: PayrollRecord[];
+  financeAdjustments: FinanceAdjustmentRecord[];
+  paymentPlans: PaymentPlanRecord[];
+  vendorInvoices: VendorInvoiceRecord[];
+  bankTxns: BankTxnRecord[];
+  periodLocks: PeriodLockRecord[];
+  preAuths: PreAuthRecord[];
+  eobRecords: EobRecord[];
+  handovers: HandoverRecord[];
   nextAccessionSeq: number;
   nextClaimSeq: number;
+  nextPoSeq: number;
+  rolePageGrants?: Partial<Record<StaffRole, PageKey[]>>;
 }
 
 export interface CareState extends HisCollections {
@@ -624,6 +857,11 @@ export const ROLE_LABELS: Record<StaffRole, string> = {
   ENT_NURSE: 'ENT nurse',
   DENTIST: 'Dentist',
   MIDWIFE: 'Midwife',
+  MATRON: 'Matron',
+  CLAIMS: 'Claims officer',
+  STOREKEEPER: 'Storekeeper',
+  PROCUREMENT: 'Procurement officer',
+  IT: 'IT support',
 };
 
 export const ROLE_DEPARTMENT: Partial<Record<StaffRole, Department>> = {
@@ -638,14 +876,19 @@ export const ROLE_DEPARTMENT: Partial<Record<StaffRole, Department>> = {
   ENT_NURSE: 'ENT',
   DENTIST: 'DENTAL',
   MIDWIFE: 'MATERNITY',
+  MATRON: 'NURSING',
+  CLAIMS: 'CLAIMS',
+  STOREKEEPER: 'STORES',
+  PROCUREMENT: 'PROCUREMENT',
+  IT: 'IT',
 };
 
 /** Who can collect cash for which hospital department. Reception and accounts take any remaining bill. */
 export const ROLE_BILLABLE_DEPARTMENTS: Record<StaffRole, Department[] | 'ALL'> = {
-  ADMIN: 'ALL',
+  ADMIN: [],
   CASHIER: 'ALL',
-  ACCOUNTANT: 'ALL',
-  RECEPTIONIST: 'ALL',
+  ACCOUNTANT: [],
+  RECEPTIONIST: [],
   NURSE: ['NURSING'],
   DOCTOR: ['CONSULTATION'],
   PHARMACIST: ['PHARMACY'],
@@ -658,6 +901,11 @@ export const ROLE_BILLABLE_DEPARTMENTS: Record<StaffRole, Department[] | 'ALL'> 
   ENT_NURSE: ['ENT'],
   DENTIST: ['DENTAL'],
   MIDWIFE: ['MATERNITY'],
+  MATRON: ['NURSING', 'WARD', 'MATERNITY'],
+  CLAIMS: [],
+  STOREKEEPER: [],
+  PROCUREMENT: [],
+  IT: [],
 };
 
 export const ROLE_INCHARGE_DEPARTMENT: Partial<Record<StaffRole, Department>> = {
@@ -672,11 +920,24 @@ export const ROLE_INCHARGE_DEPARTMENT: Partial<Record<StaffRole, Department>> = 
   EYE_DOCTOR: 'EYE',
   ENT_DOCTOR: 'ENT',
   MIDWIFE: 'MATERNITY',
+  MATRON: 'NURSING',
+  CLAIMS: 'CLAIMS',
+  STOREKEEPER: 'STORES',
+  PROCUREMENT: 'PROCUREMENT',
+  IT: 'IT',
 };
+
+export function isDoctorRole(role?: StaffRole | null): boolean {
+  return role === 'DOCTOR' || role === 'EYE_DOCTOR' || role === 'ENT_DOCTOR';
+}
+
+export function matronDepartments(): Department[] {
+  return ['NURSING', 'WARD', 'MATERNITY'];
+}
 
 export function isInCharge(user: { role: StaffRole; inChargeOf?: Department } | null | undefined): boolean {
   if (!user) return false;
-  return user.role === 'ADMIN' || Boolean(user.inChargeOf);
+  return user.role === 'ADMIN' || user.role === 'MATRON' || Boolean(user.inChargeOf);
 }
 
 export function canControlDepartment(
@@ -685,6 +946,7 @@ export function canControlDepartment(
 ): boolean {
   if (!user) return false;
   if (user.role === 'ADMIN') return true;
+  if (user.role === 'MATRON') return matronDepartments().includes(department);
   return user.inChargeOf === department;
 }
 

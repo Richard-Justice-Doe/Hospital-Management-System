@@ -1,4 +1,10 @@
 import { CLINIC_LABELS, CLINICS } from './catalog';
+import { visitBalance } from './billing';
+import { isLowStock } from './pharmacyStock';
+import { moneyBooks } from './accounts';
+import { itDeskStats } from './itDesk';
+import { accountantInboxTotals, claimDeskStats, storeStats } from './supportDesks';
+import type { PageKey } from './permissions';
 import type { CareState, ClinicId, Department, InsuranceType, PatientRecord, VisitRecord } from './types';
 
 export type DashboardPeriod = 'today' | 'all';
@@ -134,6 +140,268 @@ export function buildDashboardSnapshot(state: CareState, period: DashboardPeriod
   ];
 
   return { period, hospital, departments, trend: buildDashboardTrend(state, period, patients) };
+}
+
+export const PAGE_DASHBOARD_DEPARTMENT: Partial<Record<PageKey, Department>> = {
+  reception: 'RECORDS',
+  nursing: 'NURSING',
+  doctor: 'CONSULTATION',
+  lab: 'LAB',
+  pharmacy: 'PHARMACY',
+  xray: 'RADIOLOGY',
+  physio: 'PHYSIO',
+  dental: 'DENTAL',
+  eye: 'EYE',
+  ent: 'ENT',
+  maternity: 'MATERNITY',
+  theatre: 'THEATRE',
+  ward: 'WARD',
+  triage: 'NURSING',
+  claims: 'CLAIMS',
+  stores: 'STORES',
+  procurement: 'PROCUREMENT',
+  it: 'IT',
+};
+
+export const PAGE_DASHBOARD_TITLE: Record<PageKey, string> = {
+  dashboard: 'Hospital dashboard',
+  admin: 'Hospital dashboard',
+  reception: 'Reception dashboard',
+  nursing: 'Nursing dashboard',
+  doctor: 'Doctor dashboard',
+  lab: 'Laboratory dashboard',
+  pharmacy: 'Pharmacy dashboard',
+  xray: 'Imaging dashboard',
+  physio: 'Physiotherapy dashboard',
+  dental: 'Dental dashboard',
+  eye: 'Eye clinic dashboard',
+  ent: 'ENT dashboard',
+  maternity: 'Maternity dashboard',
+  theatre: 'Theatre dashboard',
+  ward: 'Ward dashboard',
+  triage: 'ED triage dashboard',
+  billing: 'Accounts dashboard',
+  collections: 'Collections dashboard',
+  claims: 'Claims dashboard',
+  stores: 'Stores dashboard',
+  procurement: 'Procurement dashboard',
+  it: 'IT support dashboard',
+  chart: 'Patient chart dashboard',
+  appointments: 'Appointments dashboard',
+  messages: 'Messages dashboard',
+  shifts: 'Shifts dashboard',
+  assistant: 'Assistant dashboard',
+  clinical: 'Clinical chart dashboard',
+};
+
+export interface PageDashboardCard {
+  key: string;
+  label: string;
+  value: number;
+  hint: string;
+}
+
+export interface PageDashboardSnapshot extends DashboardSnapshot {
+  page: PageKey;
+  title: string;
+  cards: PageDashboardCard[];
+  department?: Department;
+  hospitalWide: boolean;
+}
+
+function openVisits(state: CareState) {
+  return state.visits.filter((visit) => visit.stage !== 'COMPLETED');
+}
+
+function pendingDeptOrders(state: CareState, department: Department) {
+  return state.visits.reduce(
+    (sum, visit) => sum + visit.orders.filter((order) => order.department === department && order.status === 'ORDERED').length,
+    0,
+  );
+}
+
+function pageCards(state: CareState, page: PageKey, period: DashboardPeriod, snapshot: DashboardSnapshot): PageDashboardCard[] {
+  const periodVisits = state.visits.filter((visit) => inDashboardPeriod(visit.checkedInAt, period));
+  const open = openVisits(state);
+  const unpaid = state.visits.filter((visit) => visitBalance(visit) > 0).length;
+  const hospital: PageDashboardCard[] = [
+    { key: 'visits', label: 'Total visits', value: snapshot.hospital.visits, hint: 'Encounters in this period' },
+    { key: 'registration', label: 'Registration', value: snapshot.hospital.registration, hint: 'New folders opened' },
+    { key: 'nhis', label: 'NHIS', value: snapshot.hospital.nhis, hint: 'Government insurance visits' },
+    { key: 'private', label: 'Private', value: snapshot.hospital.private, hint: 'Private or cash patients' },
+    { key: 'checkIns', label: 'Total check-ins', value: snapshot.hospital.checkIns, hint: 'Checked in at reception' },
+  ];
+
+  if (page === 'admin' || page === 'dashboard') return hospital;
+
+  if (page === 'reception') {
+    return [
+      { key: 'registration', label: 'Folders opened', value: snapshot.hospital.registration, hint: 'New records folders' },
+      { key: 'checkIns', label: 'Check-ins', value: snapshot.hospital.checkIns, hint: 'Visits started' },
+      { key: 'open', label: 'Open visits', value: open.length, hint: 'Not yet completed' },
+      { key: 'unpaid', label: 'Still owing', value: unpaid, hint: 'Visits with a balance' },
+      { key: 'nhis', label: 'NHIS visits', value: snapshot.hospital.nhis, hint: 'Government insurance' },
+    ];
+  }
+
+  if (page === 'nursing') {
+    return [
+      { key: 'vitals', label: 'Waiting vitals', value: open.filter((visit) => visit.stage === 'CHECKED_IN').length, hint: 'At the nursing desk' },
+      { key: 'ready', label: 'Ready for doctor', value: open.filter((visit) => visit.stage === 'VITALS_DONE').length, hint: 'Vitals already saved' },
+      { key: 'work', label: 'Nursing work', value: pendingDeptOrders(state, 'NURSING'), hint: 'Procedures still open' },
+      { key: 'checkIns', label: 'Check-ins', value: snapshot.hospital.checkIns, hint: 'This period' },
+    ];
+  }
+
+  if (page === 'doctor') {
+    return [
+      { key: 'waiting', label: 'Waiting consult', value: open.filter((visit) => visit.stage === 'VITALS_DONE').length, hint: 'Vitals done' },
+      { key: 'with', label: 'With doctor', value: open.filter((visit) => visit.stage === 'WITH_DOCTOR').length, hint: 'Open consults' },
+      { key: 'labs', label: 'Lab to review', value: open.filter((visit) => visit.orders.some((order) => order.department === 'LAB' && order.needsDoctorReview)).length, hint: 'Results waiting' },
+      { key: 'visits', label: 'Visits', value: snapshot.hospital.visits, hint: 'This period' },
+    ];
+  }
+
+  if (page === 'lab' || page === 'pharmacy' || page === 'xray' || page === 'physio' || page === 'dental' || page === 'eye' || page === 'ent' || page === 'maternity' || page === 'theatre') {
+    const department = PAGE_DASHBOARD_DEPARTMENT[page]!;
+    const row = snapshot.departments.find((item) => item.id === department);
+    return [
+      { key: 'queue', label: 'Pending work', value: pendingDeptOrders(state, department), hint: 'Orders not finished' },
+      { key: 'visits', label: 'Visits', value: row?.visits ?? 0, hint: 'This desk this period' },
+      { key: 'nhis', label: 'NHIS', value: row?.nhis ?? 0, hint: 'Government insurance' },
+      { key: 'private', label: 'Private', value: row?.private ?? 0, hint: 'Private or cash' },
+      ...(page === 'pharmacy'
+        ? [{ key: 'stock', label: 'Low stock', value: (state.drugStock ?? []).filter((item) => isLowStock(item)).length, hint: 'Items to reorder' }]
+        : []),
+    ];
+  }
+
+  if (page === 'claims') {
+    const claims = claimDeskStats(state);
+    return [
+      { key: 'nhis', label: 'NHIS queue', value: claims.nhis, hint: 'Ghana Card / NHIS visits to work' },
+      { key: 'private', label: 'Private queue', value: claims.private, hint: 'Company insurance visits' },
+      { key: 'denied', label: 'Denied / query', value: claims.denied, hint: 'Need documents or codes' },
+      { key: 'waiting', label: 'Awaiting remittance', value: claims.waitingPay, hint: 'Submitted, not yet paid' },
+    ];
+  }
+
+  if (page === 'stores') {
+    const stores = storeStats(state);
+    return [
+      { key: 'items', label: 'Store items', value: stores.items, hint: 'Central stock lines' },
+      { key: 'low', label: 'Low stock', value: stores.low, hint: 'At or below reorder point' },
+      { key: 'issues', label: 'Issues', value: stores.issues, hint: 'Issued to departments' },
+      { key: 'orders', label: 'Open orders', value: stores.openOrders, hint: 'Procurement still pending' },
+    ];
+  }
+
+  if (page === 'procurement') {
+    const stores = storeStats(state);
+    const open = (state.purchaseOrders ?? []).filter((row) => row.status === 'REQUESTED').length;
+    const ordered = (state.purchaseOrders ?? []).filter((row) => row.status === 'ORDERED').length;
+    const pharmacy = (state.purchaseOrders ?? []).filter(
+      (row) => row.department === 'PHARMACY' && (row.status === 'REQUESTED' || row.status === 'ORDERED'),
+    ).length;
+    return [
+      { key: 'requested', label: 'Requested', value: open, hint: 'Waiting for an LPO' },
+      { key: 'ordered', label: 'On order', value: ordered, hint: 'Awaiting goods received' },
+      { key: 'pharmacy', label: 'From pharmacy', value: pharmacy, hint: 'Medicines sent by pharmacy' },
+      { key: 'low', label: 'Low stock', value: stores.low, hint: 'Stores need a restock' },
+    ];
+  }
+
+  if (page === 'it') {
+    const it = itDeskStats(state);
+    return [
+      { key: 'tickets', label: 'Open tickets', value: it.open + it.inProgress + it.waiting, hint: 'Not yet resolved' },
+      { key: 'staff', label: 'Active users', value: it.active, hint: 'Unlocked staff accounts' },
+      { key: 'locked', label: 'Locked', value: it.locked, hint: 'Need a reset or unlock' },
+      { key: 'audit', label: 'Audit rows', value: (state.auditLog ?? []).length, hint: 'Read-only incident trail' },
+    ];
+  }
+
+  if (page === 'billing' || page === 'collections') {
+    const inbox = accountantInboxTotals(state);
+    const books = moneyBooks(state);
+    return [
+      { key: 'allocated', label: 'Allocated', value: books.allocated, hint: 'This month’s budget' },
+      { key: 'spent', label: 'Spent', value: books.spent, hint: 'Wages and purchases on the books' },
+      { key: 'left', label: 'Remaining', value: books.remaining, hint: 'Allocation still unused' },
+      { key: 'claims', label: 'Claims remittance', value: inbox.remittanceWaiting, hint: 'Cash still to receive from claims' },
+    ];
+  }
+
+  if (page === 'ward') {
+    const beds = state.beds ?? [];
+    return [
+      { key: 'occupied', label: 'Beds occupied', value: beds.filter((bed) => bed.status === 'OCCUPIED' || bed.patientId).length, hint: 'Patients on the ward' },
+      { key: 'free', label: 'Beds free', value: beds.filter((bed) => bed.status !== 'OCCUPIED' && !bed.patientId).length, hint: 'Empty beds' },
+      { key: 'visits', label: 'Visits', value: snapshot.hospital.visits, hint: 'This period' },
+    ];
+  }
+
+  if (page === 'triage') {
+    return [
+      { key: 'waiting', label: 'Waiting vitals', value: open.filter((visit) => visit.stage === 'CHECKED_IN').length, hint: 'Need triage or vitals' },
+      { key: 'open', label: 'Open visits', value: open.length, hint: 'Still in the hospital' },
+      { key: 'checkIns', label: 'Check-ins', value: snapshot.hospital.checkIns, hint: 'This period' },
+    ];
+  }
+
+  if (page === 'chart') {
+    return [
+      { key: 'patients', label: 'Folders', value: state.patients.length, hint: 'All patient records' },
+      { key: 'open', label: 'Open visits', value: open.length, hint: 'Active encounters' },
+      { key: 'visits', label: 'Visits', value: periodVisits.length, hint: 'This period' },
+    ];
+  }
+
+  if (page === 'appointments') {
+    const booked = (state.appointments ?? []).filter((row) => inDashboardPeriod(row.startsAt, period)).length;
+    return [
+      { key: 'booked', label: 'Booked', value: booked, hint: 'Appointments this period' },
+      { key: 'open', label: 'Open visits', value: open.length, hint: 'Patients already in' },
+    ];
+  }
+
+  if (page === 'messages') {
+    return [
+      { key: 'messages', label: 'Messages', value: (state.messages ?? []).filter((row) => inDashboardPeriod(row.at, period)).length, hint: 'This period' },
+      { key: 'open', label: 'Open visits', value: open.length, hint: 'Patients still here' },
+    ];
+  }
+
+  if (page === 'shifts') {
+    const onDuty = (state.shifts ?? []).filter((shift) => shift.day === new Date().toISOString().slice(0, 10)).length;
+    return [
+      { key: 'today', label: 'Shifts today', value: onDuty, hint: 'Rostered for this date' },
+      { key: 'staff', label: 'Staff', value: state.staff.filter((staff) => staff.isActive).length, hint: 'Active accounts' },
+    ];
+  }
+
+  return [
+    { key: 'visits', label: 'Visits', value: snapshot.hospital.visits, hint: 'This period' },
+    { key: 'open', label: 'Open visits', value: open.length, hint: 'Not yet completed' },
+  ];
+}
+
+export function buildPageDashboard(state: CareState, page: PageKey, period: DashboardPeriod = 'today'): PageDashboardSnapshot {
+  const snapshot = buildDashboardSnapshot(state, period);
+  const hospitalWide = page === 'admin' || page === 'dashboard';
+  const department = PAGE_DASHBOARD_DEPARTMENT[page];
+  const departments = hospitalWide
+    ? snapshot.departments
+    : snapshot.departments.filter((row) => row.id === department || row.id === page.toUpperCase());
+  return {
+    ...snapshot,
+    departments: departments.length > 0 ? departments : snapshot.departments.slice(0, 1),
+    page,
+    title: PAGE_DASHBOARD_TITLE[page],
+    cards: pageCards(state, page, period, snapshot),
+    department,
+    hospitalWide,
+  };
 }
 
 function hourLabel(hour: number): string {

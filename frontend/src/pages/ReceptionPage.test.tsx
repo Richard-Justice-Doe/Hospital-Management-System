@@ -39,9 +39,10 @@ describe('Reception patient administration', () => {
       </MemoryRouter>,
     );
     expect(screen.getByRole('heading', { name: /reception/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /patient administration/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /new patients/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /new visit & billing/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /daily work/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /new folder/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /check-in & bill/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /bill later/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /co-payer/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /save new patient & create folder/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/folder date/i)).toBeInTheDocument();

@@ -1,8 +1,10 @@
 import { hydrateHis } from './his';
+import { nextQueueNo } from './itDesk';
 import { createSeedState, ensureDemoStaff } from './seed';
 import {
   ensureHospitalNumbers,
   findByHospitalNo,
+  FOLDER_YEAR_MAX,
   formatManualFolderNo,
   issueHospitalNo,
   loadPatientDatabase,
@@ -27,7 +29,7 @@ import type {
   VisitRecord,
 } from './types';
 import { formatReceiptNo, getClinic } from './catalog';
-import { ageFromDob } from './patientAdmin';
+import { ageFromDob, hasGhanaNhiss, normalizeCcCode, visitMissingRequiredCc } from './patientAdmin';
 import { evaluateVitals, type VitalsInput } from './vitals';
 
 export const CARE_STORAGE_KEY = 'cms_care_workflow_v6';
@@ -155,16 +157,18 @@ function startVisit(
   copayerId?: string,
 ): VisitRecord {
   const clinic = getClinic(clinicId);
+  const checkedInAt = new Date().toISOString();
   let visit: VisitRecord = {
     id: newId('vis'),
     patientId,
     clinic: clinic.id,
     reason: reason.trim(),
     stage: clinic.flow === 'opd' ? 'CHECKED_IN' : 'AWAITING_SERVICES',
-    checkedInAt: new Date().toISOString(),
+    checkedInAt,
     checkedInBy: staffId,
     orders: [],
     copayerId,
+    queueNo: nextQueueNo(state.visits, checkedInAt),
   };
   if (clinic.flow === 'clinic') {
     visit = addServiceIfMissing(visit, state.services, clinic.serviceId, 'ORDERED', false);
@@ -208,6 +212,9 @@ export type PatientAdminInput = {
   insuranceType?: InsuranceType;
   insuranceProvider?: string;
   insuranceNumber?: string;
+  ghanaCardNo?: string;
+  hinNumber?: string;
+  photoUrl?: string;
   hospitalNo?: string;
   folderDate?: string;
   portalPin?: string;
@@ -234,6 +241,9 @@ function patientFromInput(input: PatientAdminInput, hospitalNo: string, now: str
     insuranceType: input.insuranceType,
     insuranceProvider: input.insuranceType === 'CASH' ? undefined : input.insuranceProvider?.trim() || undefined,
     insuranceNumber: input.insuranceType === 'CASH' ? undefined : input.insuranceNumber?.trim() || undefined,
+    ghanaCardNo: input.ghanaCardNo?.trim() || undefined,
+    hinNumber: input.hinNumber?.trim() || undefined,
+    photoUrl: input.photoUrl || undefined,
     relatedStaffId: input.relatedStaffId || undefined,
     staffRelation: input.relatedStaffId ? input.staffRelation : undefined,
     createdAt: now,
@@ -253,6 +263,10 @@ export function allocatePatientFolder(state: CareState, input: PatientAdminInput
     ? { hospitalNo: formatManualFolderNo(input.hospitalNo, input.folderDate), nextSeq: state.nextHospitalSeq }
     : issueHospitalNo(state.nextHospitalSeq, state.patients);
   if (!issued.hospitalNo) return { state, error: 'Enter a folder number.' };
+  const parsed = issued.hospitalNo.toUpperCase().match(/^A(\d+)\/(\d{4})$/);
+  if (parsed && Number(parsed[1]) > FOLDER_YEAR_MAX) {
+    return { state, error: `Folder numbers for ${parsed[2]} stop at A${FOLDER_YEAR_MAX}/${parsed[2]}. Start A1 in the next year.` };
+  }
   if (findByHospitalNo(state.patients, issued.hospitalNo)) {
     return { state, error: `Folder number ${issued.hospitalNo} is already allocated.` };
   }
@@ -304,10 +318,58 @@ export function checkInByHospitalNo(
   staffId: string,
   clinic: ClinicId = 'GENERAL',
   copayerId?: string,
+  nhisCcCode?: string,
 ): CareState {
   const patient = findByHospitalNo(state.patients, hospitalNo);
   if (!patient) return state;
-  return checkInExisting(state, patient.id, reason, staffId, clinic, copayerId);
+  return checkInExisting(state, patient.id, reason, staffId, clinic, copayerId, nhisCcCode);
+}
+
+export function setVisitCcCode(state: CareState, visitId: string, nhisCcCode: string): CareState {
+  const visit = state.visits.find((item) => item.id === visitId);
+  const patient = visit ? state.patients.find((item) => item.id === visit.patientId) : undefined;
+  const code = normalizeCcCode(nhisCcCode);
+  if (hasGhanaNhiss(patient) && !code) return state;
+  return {
+    ...state,
+    visits: state.visits.map((item) => (item.id === visitId ? { ...item, nhisCcCode: code || undefined } : item)),
+  };
+}
+
+export function markPayLater(state: CareState, visitId: string, reason: string, staffId: string): CareState {
+  return {
+    ...state,
+    visits: state.visits.map((visit) =>
+      visit.id === visitId ? { ...visit, payLaterReason: reason.trim(), billingDecidedBy: staffId, billingDecidedAt: visit.billingDecidedAt ?? new Date().toISOString() } : visit,
+    ),
+  };
+}
+
+export function payAmountTowardBill(
+  state: CareState,
+  visitId: string,
+  amount: number,
+  staffId: string,
+  method: VisitRecord['paymentMethod'] = 'CASH',
+  witnessId?: string,
+): CareState {
+  const visit = state.visits.find((item) => item.id === visitId);
+  if (!visit) return state;
+  let left = amount;
+  const ids: string[] = [];
+  for (const order of visit.orders.filter((item) => item.chargeable !== false && !item.paidAt)) {
+    if (left <= 0) break;
+    ids.push(order.id);
+    left -= order.priceGhs;
+  }
+  if (ids.length === 0) return state;
+  const paid = payOrders(state, visitId, ids, staffId);
+  return {
+    ...paid,
+    visits: paid.visits.map((item) =>
+      item.id === visitId ? { ...item, paymentMethod: method, witnessId, payLaterReason: left > 0.009 ? item.payLaterReason ?? 'Balance later' : undefined } : item,
+    ),
+  };
 }
 
 export function checkInExisting(
@@ -317,15 +379,22 @@ export function checkInExisting(
   staffId: string,
   clinicId: ClinicId = 'GENERAL',
   copayerId?: string,
+  nhisCcCode?: string,
 ): CareState {
   const clinic = getClinic(clinicId);
+  const patient = state.patients.find((p) => p.id === patientId);
   const active = state.visits.find((v) => v.patientId === patientId && v.stage !== 'COMPLETED');
+  const code = normalizeCcCode(nhisCcCode) || normalizeCcCode(active?.nhisCcCode);
+  if (hasGhanaNhiss(patient) && !code) return state;
+
   if (active) {
     if (!isFolderOnlyVisit(active) && active.clinic) {
       return {
         ...state,
         visits: state.visits.map((visit) =>
-          visit.id === active.id ? { ...visit, copayerId: copayerId ?? visit.copayerId } : visit,
+          visit.id === active.id
+            ? { ...visit, copayerId: copayerId ?? visit.copayerId, nhisCcCode: code || visit.nhisCcCode }
+            : visit,
         ),
       };
     }
@@ -334,7 +403,9 @@ export function checkInExisting(
       clinic: clinic.id,
       reason: reason.trim(),
       copayerId: copayerId ?? active.copayerId,
+      nhisCcCode: code || active.nhisCcCode,
       stage: clinic.flow === 'opd' ? 'CHECKED_IN' : 'AWAITING_SERVICES',
+      queueNo: active.queueNo ?? nextQueueNo(state.visits, active.checkedInAt),
     };
     if (clinic.flow === 'clinic') {
       next = addServiceIfMissing(next, state.services, clinic.serviceId, 'ORDERED', false);
@@ -345,8 +416,10 @@ export function checkInExisting(
     };
   }
 
-  const patient = state.patients.find((p) => p.id === patientId);
-  const visit = startVisit(state, patientId, reason, staffId, clinicId, copayerId);
+  const visit: VisitRecord = {
+    ...startVisit(state, patientId, reason, staffId, clinicId, copayerId),
+    nhisCcCode: code || undefined,
+  };
   const patients =
     patient && !patient.folderCreatedAt
       ? state.patients.map((p) =>
@@ -560,6 +633,8 @@ export function applyVisitBilling(
     ...state,
     visits: state.visits.map((visit) => {
       if (visit.id !== visitId || visit.stage === 'COMPLETED') return visit;
+      const patient = state.patients.find((item) => item.id === visit.patientId);
+      if (visitMissingRequiredCc(patient, visit)) return visit;
       if (!input.billable) {
         return settleVisitAfterPayment(
           {
@@ -631,6 +706,32 @@ export function payBill(state: CareState, visitId: string, staffId: string): Car
     visit.orders.filter((o) => !o.paidAt).map((o) => o.id),
     staffId,
   );
+}
+
+export function voidVisitPayment(state: CareState, visitId: string): CareState {
+  return {
+    ...state,
+    visits: state.visits.map((visit) => {
+      if (visit.id !== visitId) return visit;
+      const stamps = visit.orders.map((order) => order.paidAt).filter((at): at is string => Boolean(at));
+      const stamp = visit.paidAt ?? stamps.sort().at(-1);
+      if (!stamp) return visit;
+      const orders = visit.orders.map((order) =>
+        order.paidAt === stamp ? { ...order, paidAt: undefined, paidBy: undefined } : order,
+      );
+      const stillPaid = orders.some((order) => order.paidAt);
+      const pendingWork = orders.some((order) => order.status === 'ORDERED');
+      return {
+        ...visit,
+        orders,
+        paidAt: stillPaid ? visit.paidAt : undefined,
+        paidBy: stillPaid ? visit.paidBy : undefined,
+        receiptNo: stillPaid ? visit.receiptNo : undefined,
+        completedAt: visit.stage === 'COMPLETED' ? undefined : visit.completedAt,
+        stage: visit.stage === 'COMPLETED' ? (pendingWork ? 'AWAITING_SERVICES' : 'READY_TO_BILL') : visit.stage,
+      };
+    }),
+  };
 }
 
 export function collectAndCompleteOrder(
@@ -762,10 +863,25 @@ export function upsertStaff(state: CareState, staff: StaffAccount): CareState {
   };
 }
 
+export function usernameFromEmail(email: string): string {
+  return email.trim().toLowerCase().split('@')[0] ?? '';
+}
+
+export function staffUsername(staff: Pick<StaffAccount, 'email' | 'username'>): string {
+  return (staff.username || usernameFromEmail(staff.email)).trim().toLowerCase();
+}
+
+export function findStaffByLogin(staff: StaffAccount[], login: string): StaffAccount | undefined {
+  const needle = login.trim().toLowerCase();
+  if (!needle) return undefined;
+  return staff.find((s) => s.isActive && (s.email.toLowerCase() === needle || staffUsername(s) === needle));
+}
+
 export function createStaff(
   state: CareState,
   input: {
     email: string;
+    username?: string;
     firstName: string;
     lastName: string;
     role: StaffRole;
@@ -777,10 +893,12 @@ export function createStaff(
   },
 ): CareState {
   const email = input.email.trim().toLowerCase();
-  if (state.staff.some((s) => s.email === email)) return state;
+  const username = (input.username?.trim() || usernameFromEmail(email)).toLowerCase();
+  if (state.staff.some((s) => s.email === email || staffUsername(s) === username)) return state;
   const staff: StaffAccount = {
     id: newId('staff'),
     email,
+    username,
     firstName: input.firstName.trim(),
     lastName: input.lastName.trim(),
     role: input.role,
@@ -797,10 +915,10 @@ export function createStaff(
 
 export function authenticateStaff(
   state: CareState,
-  email: string,
+  login: string,
   password: string,
 ): StaffAccount | 'invalid' | null {
-  const staff = state.staff.find((s) => s.email === email.trim().toLowerCase() && s.isActive);
+  const staff = findStaffByLogin(state.staff, login);
   if (!staff) return null;
   if (staff.password !== password) return 'invalid';
   return staff;

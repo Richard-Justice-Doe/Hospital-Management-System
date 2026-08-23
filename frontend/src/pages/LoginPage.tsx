@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { APP_HOME, useAuth } from '../context/AuthContext';
+import PageDateBox from '../components/PageDateBox';
 import { AuthError } from '../lib/api';
 
 const DEPARTMENTS = [
@@ -16,6 +17,9 @@ const DEPARTMENTS = [
   { name: 'Eye / ENT / Dental', detail: 'Specialist clinics', photo: '/hospital/hospital-opd.png' },
   { name: 'Physiotherapy', detail: 'Rehab sessions', photo: '/hospital/hospital-physio.png?v=2' },
   { name: 'Accounts', detail: 'Cashier and collections', photo: '/hospital/hospital-reception.png' },
+  { name: 'Claims', detail: 'NHIS, Ghana Card, private insurance', photo: '/hospital/hospital-reception.png' },
+  { name: 'Stores / procurement', detail: 'Stock, issues, and purchase orders', photo: '/hospital/hospital-pharmacy.png' },
+  { name: 'IT support', detail: 'Tickets, devices, lockouts, and audit', photo: '/hospital/hospital-reception.png' },
 ];
 
 function HospitalMark() {
@@ -47,7 +51,7 @@ export default function LoginPage() {
     try {
       await login(email, password);
     } catch (err) {
-      setError(err instanceof AuthError ? err.message : 'Invalid email or password');
+      setError(err instanceof AuthError ? err.message : 'Invalid username, email, or password');
     } finally {
       setIsSubmitting(false);
     }
@@ -65,6 +69,9 @@ export default function LoginPage() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
+            <div className="rounded-lg bg-white px-2 py-1">
+              <PageDateBox />
+            </div>
             <span className="rounded-full bg-red-600 px-3 py-1.5 font-medium">Emergency 24 hours</span>
             <Link className="rounded-full bg-white/10 px-3 py-1.5 font-medium hover:bg-white/20" to="/portal">
               Patient portal
@@ -110,7 +117,7 @@ export default function LoginPage() {
           <div className="p-6">
             <p className="text-xs font-semibold uppercase tracking-wide text-clinic-700">Staff desk</p>
             <h2 className="mt-1 text-lg font-semibold text-slate-900">Staff sign-in</h2>
-            <p className="mt-1 text-sm text-slate-500">Use your hospital email and password.</p>
+            <p className="mt-1 text-sm text-slate-500">Use your username or hospital email, then the password.</p>
 
             <form
               onSubmit={(e) => {
@@ -122,13 +129,14 @@ export default function LoginPage() {
 
               <div>
                 <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-700">
-                  Email
+                  Username or email
                 </label>
                 <input
                   id="email"
-                  type="email"
+                  type="text"
                   required
                   autoComplete="username"
+                  placeholder="admin or admin@clinic.local"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2"

@@ -1,3 +1,4 @@
+import { ROLE_SALARY_GHS } from './accounts';
 import { DEFAULT_SERVICES } from './catalog';
 import { seedHis } from './his';
 import type { CareState, Department, StaffAccount, StaffRole } from './types';
@@ -32,6 +33,7 @@ function person(
   return {
     id,
     email,
+    username: email.split('@')[0],
     firstName,
     lastName,
     role,
@@ -41,6 +43,7 @@ function person(
     department,
     inChargeOf,
     phone: staffPhone(id),
+    salaryGhs: ROLE_SALARY_GHS[role],
   };
 }
 
@@ -69,6 +72,7 @@ function head(
 
 export const DEFAULT_STAFF: CareState['staff'] = [
   person('staff-admin', 'admin@clinic.local', 'Admin123!', 'System', 'Admin', 'ADMIN'),
+  person('staff-matron', 'matron@clinic.local', 'Matron1!', 'Akosua', 'Matron', 'MATRON', 'NURSING', 'NURSING'),
   person('staff-cashier', 'cashier@clinic.local', 'Cashier1!', 'Efua', 'Cashier', 'CASHIER'),
   person('staff-accountant', 'accountant@clinic.local', 'Accountant1!', 'Ama', 'Books', 'ACCOUNTANT'),
 
@@ -101,6 +105,10 @@ export const DEFAULT_STAFF: CareState['staff'] = [
   staff('staff-midwife', 'midwife@clinic.local', 'Midwife1!', 'Esi', 'Midwife', 'MIDWIFE', 'MATERNITY'),
   staff('staff-ward', 'ward@clinic.local', 'WardPass1!', 'Serwaa', 'Ward Nurse', 'NURSE', 'WARD'),
   staff('staff-theatre', 'theatre@clinic.local', 'Theatre1!', 'Mensah', 'Theatre Nurse', 'NURSE', 'THEATRE'),
+  staff('staff-claims', 'claims@clinic.local', 'Claims1!', 'Akosua', 'Claims', 'CLAIMS', 'CLAIMS'),
+  staff('staff-stores', 'stores@clinic.local', 'Stores1!', 'Kwabena', 'Stores', 'STOREKEEPER', 'STORES'),
+  staff('staff-procurement', 'procurement@clinic.local', 'Procure1!', 'Abena', 'Procurement', 'PROCUREMENT', 'PROCUREMENT'),
+  staff('staff-it', 'it@clinic.local', 'ItDesk1!', 'Nana', 'Systems', 'IT', 'IT'),
 ];
 
 export function ensureDemoStaff(staffList: StaffAccount[]): StaffAccount[] {
@@ -112,8 +120,10 @@ export function ensureDemoStaff(staffList: StaffAccount[]): StaffAccount[] {
     if (!seed) return item;
     return {
       ...item,
+      username: item.username || seed.username || seed.email.split('@')[0],
       department: item.department ?? seed.department,
       inChargeOf: seed.inChargeOf,
+      salaryGhs: item.salaryGhs ?? seed.salaryGhs,
       lastName: seed.id === 'staff-cashier' && item.lastName === 'Accounts' ? 'Cashier' : item.lastName,
     };
   });
@@ -122,6 +132,7 @@ export function ensureDemoStaff(staffList: StaffAccount[]): StaffAccount[] {
 export const STAFF_LOGINS = DEFAULT_STAFF.map((staff) => ({
   role: staff.role,
   email: staff.email,
+  username: staff.username ?? staff.email.split('@')[0],
   password: staff.password,
   name: `${staff.firstName} ${staff.lastName}`,
   department: staff.department,
@@ -138,7 +149,7 @@ export function createSeedState(): CareState {
     patients: [
       {
         id: 'pat-amara',
-        hospitalNo: 'CH-00001',
+        hospitalNo: 'A1/2026',
         firstName: 'Amara',
         lastName: 'Owusu',
         age: 34,
@@ -151,6 +162,8 @@ export function createSeedState(): CareState {
         insuranceType: 'GOVERNMENT',
         insuranceProvider: 'NHIS',
         insuranceNumber: 'NHIS-2049183',
+        ghanaCardNo: 'GHA-123456789-1',
+        hinNumber: 'HIN-2049183',
         portalPin: '582041',
         createdAt: minutesAgo(180),
         folderCreatedAt: minutesAgo(180),
@@ -158,7 +171,7 @@ export function createSeedState(): CareState {
       },
       {
         id: 'pat-kwame',
-        hospitalNo: 'CH-00002',
+        hospitalNo: 'A2/2026',
         firstName: 'Kwame',
         lastName: 'Mensah',
         age: 58,
@@ -171,6 +184,8 @@ export function createSeedState(): CareState {
         insuranceType: 'GOVERNMENT',
         insuranceProvider: 'NHIS',
         insuranceNumber: 'NHIS-1182044',
+        ghanaCardNo: 'GHA-223456789-2',
+        hinNumber: 'HIN-1182044',
         portalPin: '619573',
         createdAt: minutesAgo(150),
         folderCreatedAt: minutesAgo(150),
@@ -178,7 +193,7 @@ export function createSeedState(): CareState {
       },
       {
         id: 'pat-lisa',
-        hospitalNo: 'CH-00003',
+        hospitalNo: 'A3/2026',
         firstName: 'Lisa',
         lastName: 'Chen',
         age: 7,
@@ -197,7 +212,7 @@ export function createSeedState(): CareState {
       },
       {
         id: 'pat-omar',
-        hospitalNo: 'CH-00004',
+        hospitalNo: 'A4/2026',
         firstName: 'Omar',
         lastName: 'Hassan',
         age: 41,
@@ -217,7 +232,7 @@ export function createSeedState(): CareState {
       },
       {
         id: 'pat-nina',
-        hospitalNo: 'CH-00005',
+        hospitalNo: 'A5/2026',
         firstName: 'Nina',
         lastName: 'Patel',
         age: 29,
@@ -229,6 +244,8 @@ export function createSeedState(): CareState {
         insuranceType: 'GOVERNMENT',
         insuranceProvider: 'NHIS',
         insuranceNumber: 'NHIS-330184',
+        ghanaCardNo: 'GHA-323456789-3',
+        hinNumber: 'HIN-330184',
         portalPin: '408217',
         createdAt: minutesAgo(40),
         folderCreatedAt: minutesAgo(40),
@@ -278,6 +295,7 @@ export function createSeedState(): CareState {
         stage: 'CHECKED_IN',
         checkedInAt: minutesAgo(18),
         checkedInBy: 'staff-reception',
+        nhisCcCode: 'CC-NINA-330184',
         orders: [{ id: 'ord-nina-reg', serviceId: 'reg-folder', name: 'Patient folder / registration', department: 'RECORDS', priceGhs: 20, status: 'DONE' }],
       },
       {
@@ -315,6 +333,7 @@ export function createSeedState(): CareState {
         stage: 'WITH_DOCTOR',
         checkedInAt: minutesAgo(95),
         checkedInBy: 'staff-reception',
+        nhisCcCode: 'CC-KWAME-1182044',
         vitalsDoneAt: minutesAgo(70),
         withDoctorAt: minutesAgo(25),
         vitals: {
@@ -343,6 +362,7 @@ export function createSeedState(): CareState {
         stage: 'COMPLETED',
         checkedInAt: daysAgo(40),
         checkedInBy: 'staff-reception',
+        nhisCcCode: 'CC-AMARA-2049183',
         vitalsDoneAt: daysAgo(40),
         withDoctorAt: daysAgo(40),
         completedAt: daysAgo(40),

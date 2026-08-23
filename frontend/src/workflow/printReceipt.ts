@@ -181,6 +181,140 @@ export function printFolderCover(patient: PatientRecord) {
   win.document.close();
 }
 
+function openPrintHtml(title: string, html: string, width = 520, height = 700) {
+  const win = window.open('', '_blank', `noopener,noreferrer,width=${width},height=${height}`);
+  if (!win) return;
+  win.document.write(html);
+  win.document.close();
+}
+
+export function idCardHtml(patient: PatientRecord): string {
+  const photo = patient.photoUrl
+    ? `<img class="photo" src="${esc(patient.photoUrl)}" alt="" />`
+    : `<div class="photo empty">${esc((patient.firstName[0] ?? '') + (patient.lastName[0] ?? ''))}</div>`;
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>ID card ${esc(patient.hospitalNo)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 16px; color: #0f172a; }
+    .card { width: 86mm; min-height: 54mm; border: 2px solid #0369a1; border-radius: 8px; padding: 8px 10px; display: flex; gap: 10px; }
+    .photo { width: 22mm; height: 28mm; object-fit: cover; border-radius: 4px; background: #e0f2fe; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #0369a1; }
+    h1 { font-size: 11px; margin: 0 0 4px; letter-spacing: 1px; text-transform: uppercase; color: #0369a1; }
+    .no { font-family: Consolas, monospace; font-size: 18px; font-weight: bold; margin: 2px 0 6px; }
+    p { margin: 2px 0; font-size: 12px; }
+    .muted { color: #64748b; font-size: 10px; }
+    @media print { body { margin: 0; } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    ${photo}
+    <div>
+      <h1>Patient ID card</h1>
+      <p class="no">${esc(patient.hospitalNo)}</p>
+      <p><strong>${esc(patient.firstName)} ${esc(patient.lastName)}</strong></p>
+      <p>${esc(patient.gender)} · ${patient.age}y${patient.dateOfBirth ? ` · ${esc(new Date(patient.dateOfBirth).toLocaleDateString())}` : ''}</p>
+      <p>${esc(patient.phone)}</p>
+      ${patient.insuranceType ? `<p>${esc(insuranceLabel(patient))}</p>` : ''}
+      <p class="muted">Bring this card to every visit.</p>
+    </div>
+  </div>
+  <script>window.onload = function () { window.print(); };</script>
+</body>
+</html>`;
+}
+
+export function printIdCard(patient: PatientRecord) {
+  openPrintHtml(`ID card ${patient.hospitalNo}`, idCardHtml(patient), 480, 360);
+}
+
+export function queueTicketHtml(patient: PatientRecord, visit: VisitRecord): string {
+  const ticket = visit.queueNo ? String(visit.queueNo) : patient.hospitalNo;
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Queue ticket ${esc(ticket)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 16px; color: #111; text-align: center; }
+    .slip { width: 80mm; margin: 0 auto; border: 2px dashed #0369a1; padding: 16px 12px; }
+    h1 { font-size: 14px; margin: 0; letter-spacing: 1px; text-transform: uppercase; color: #0369a1; }
+    .no { font-size: 52px; font-weight: 900; line-height: 1; margin: 10px 0 6px; }
+    .folder { font-family: Consolas, monospace; font-size: 18px; font-weight: bold; }
+    p { margin: 4px 0; font-size: 13px; }
+    .muted { color: #555; font-size: 11px; }
+    @media print { body { margin: 0; } }
+  </style>
+</head>
+<body>
+  <div class="slip">
+    <h1>Queue ticket</h1>
+    <p class="no">${esc(ticket)}</p>
+    <p class="folder">${esc(patient.hospitalNo)}</p>
+    <p><strong>${esc(patient.firstName)} ${esc(patient.lastName)}</strong></p>
+    <p>${esc(CLINIC_LABELS[visit.clinic ?? 'GENERAL'])} · ${esc(visit.reason)}</p>
+    <p>${esc(new Date(visit.checkedInAt).toLocaleString())}</p>
+    ${visit.nhisCcCode ? `<p>CC ${esc(visit.nhisCcCode)}</p>` : ''}
+    <p class="muted">Take this ticket to Nursing, then wait to be called.</p>
+  </div>
+  <script>window.onload = function () { window.print(); };</script>
+</body>
+</html>`;
+}
+
+export function printQueueTicket(patient: PatientRecord, visit: VisitRecord) {
+  openPrintHtml(`Queue ticket ${visit.queueNo ?? patient.hospitalNo}`, queueTicketHtml(patient, visit), 420, 560);
+}
+
+export function printVisitSlip(patient: PatientRecord, visit: VisitRecord) {
+  printQueueTicket(patient, visit);
+}
+
+export function labSampleLabelHtml(input: {
+  patientName: string;
+  hospitalNo: string;
+  accessionNo: string;
+  testName: string;
+  collectedAt: string;
+}): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Lab label ${esc(input.accessionNo)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 12px; color: #111; }
+    .label { width: 70mm; min-height: 32mm; border: 1px solid #111; padding: 6px 8px; }
+    .acc { font-family: Consolas, monospace; font-size: 16px; font-weight: bold; }
+    p { margin: 2px 0; font-size: 12px; }
+    .muted { color: #444; font-size: 10px; }
+    @media print { body { margin: 0; } }
+  </style>
+</head>
+<body>
+  <div class="label">
+    <p class="acc">${esc(input.accessionNo)}</p>
+    <p><strong>${esc(input.patientName)}</strong> · ${esc(input.hospitalNo)}</p>
+    <p>${esc(input.testName)}</p>
+    <p class="muted">${esc(new Date(input.collectedAt).toLocaleString())}</p>
+  </div>
+  <script>window.onload = function () { window.print(); };</script>
+</body>
+</html>`;
+}
+
+export function printLabSampleLabel(input: {
+  patientName: string;
+  hospitalNo: string;
+  accessionNo: string;
+  testName: string;
+  collectedAt: string;
+}) {
+  openPrintHtml(`Lab label ${input.accessionNo}`, labSampleLabelHtml(input), 400, 280);
+}
+
 export function printLabReport(input: {
   patientName: string;
   hospitalNo: string;

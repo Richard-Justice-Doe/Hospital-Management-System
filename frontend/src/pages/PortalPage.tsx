@@ -1,10 +1,19 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { loadCareState } from '../workflow/store';
 import { authenticatePatient } from '../workflow/his';
 import { CLINIC_LABELS, formatGhs } from '../workflow/catalog';
 import { unpaidOrders } from '../workflow/billing';
 import type { AppointmentRecord, NotificationRecord, PatientRecord, VisitRecord } from '../workflow/types';
+import {
+  PORTAL_FILTERS,
+  appointmentMatchesPortalFilter,
+  messageMatchesPortalFilter,
+  showPortalSection,
+  visitMatchesPortalFilter,
+  type PortalFilter,
+} from '../workflow/portalFilters';
+import PageDateBox from '../components/PageDateBox';
 import { btnPrimary, inputClass } from './admin/adminUi';
 import { portalLoginRequest, portalLogoutRequest, portalMeRequest, USE_SERVER } from '../lib/server';
 import { AuthError } from '../lib/api';
@@ -18,6 +27,7 @@ export default function PortalPage() {
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(USE_SERVER);
+  const [filter, setFilter] = useState<PortalFilter>('ALL');
 
   useEffect(() => {
     if (!USE_SERVER) return;
@@ -59,6 +69,14 @@ export default function PortalPage() {
     setNotes(state.notifications.filter((n) => n.patientId === found.id));
   }
 
+  const due = visits.flatMap((v) => unpaidOrders(v));
+  const visibleVisits = useMemo(() => visits.filter((visit) => visitMatchesPortalFilter(visit, filter)), [visits, filter]);
+  const visibleAppts = useMemo(
+    () => appts.filter((appointment) => appointmentMatchesPortalFilter(appointment, filter)),
+    [appts, filter],
+  );
+  const visibleNotes = useMemo(() => notes.filter((note) => messageMatchesPortalFilter(note, filter)), [notes, filter]);
+
   if (loading) {
     return <p className="p-8 text-sm text-slate-500">Opening portal…</p>;
   }
@@ -67,10 +85,13 @@ export default function PortalPage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-clinic-50 px-4">
         <form onSubmit={(e) => void signIn(e)} className="w-full max-w-md space-y-3 rounded-2xl bg-white p-8">
+          <div className="flex justify-end">
+            <PageDateBox />
+          </div>
           <h1 className="text-xl font-semibold text-clinic-900">Patient portal</h1>
           <p className="text-sm text-slate-600">Appointments, results, and amounts due.</p>
           {error && <p className="text-sm text-red-700">{error}</p>}
-          <input className={inputClass} placeholder="Folder number e.g. CH-00001" value={hospitalNo} onChange={(e) => setHospitalNo(e.target.value)} />
+          <input className={inputClass} placeholder="Folder number e.g. A1/2026" value={hospitalNo} onChange={(e) => setHospitalNo(e.target.value)} />
           <input className={inputClass} placeholder="PIN" type="password" value={pin} onChange={(e) => setPin(e.target.value)} />
           <button className={`${btnPrimary} w-full`} type="submit">
             Open my record
@@ -83,8 +104,6 @@ export default function PortalPage() {
     );
   }
 
-  const due = visits.flatMap((v) => unpaidOrders(v));
-
   return (
     <div className="min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-3xl space-y-4">
@@ -95,6 +114,8 @@ export default function PortalPage() {
             </h1>
             <p className="text-sm text-slate-500">{patient.hospitalNo}</p>
           </div>
+          <div className="flex flex-col items-end gap-2">
+            <PageDateBox />
           <button
             type="button"
             className="text-sm text-slate-600"
@@ -105,22 +126,46 @@ export default function PortalPage() {
           >
             Sign out
           </button>
+          </div>
         </div>
+        <section className="rounded-xl border bg-white p-5">
+          <h2 className="font-medium">Filter by role</h2>
+          <div className="mt-3 flex flex-wrap gap-2" role="tablist" aria-label="Portal role filters">
+            {PORTAL_FILTERS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={filter === item.id}
+                onClick={() => setFilter(item.id)}
+                className={`rounded-full px-3 py-1.5 text-sm font-medium ${
+                  filter === item.id ? 'bg-clinic-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </section>
+        {showPortalSection('appointments', filter) && (
         <section className="rounded-xl border bg-white p-5">
           <h2 className="font-medium">Appointments</h2>
           <ul className="mt-2 text-sm">
-            {appts.length === 0 && <li>No upcoming bookings.</li>}
-            {appts.map((a) => (
+            {visibleAppts.length === 0 && <li>No upcoming bookings.</li>}
+            {visibleAppts.map((a) => (
               <li key={a.id}>
                 {new Date(a.startsAt).toLocaleString()} · {CLINIC_LABELS[a.clinic]} · {a.status}
               </li>
             ))}
           </ul>
         </section>
+        )}
+        {showPortalSection('visits', filter) && (
         <section className="rounded-xl border bg-white p-5">
           <h2 className="font-medium">Results & visits</h2>
           <ul className="mt-2 text-sm">
-            {visits.map((v) => (
+            {visibleVisits.length === 0 && <li className="text-slate-500">No visits for this role.</li>}
+            {visibleVisits.map((v) => (
               <li key={v.id} className="border-t py-2">
                 {new Date(v.checkedInAt).toLocaleDateString()} · {v.diagnosis ?? v.reason}
                 {v.orders
@@ -134,20 +179,26 @@ export default function PortalPage() {
             ))}
           </ul>
         </section>
+        )}
+        {showPortalSection('billing', filter) && (
         <section className="rounded-xl border bg-white p-5">
           <h2 className="font-medium">Amount due</h2>
           <p className="text-sm">{due.length ? formatGhs(due.reduce((s, o) => s + o.priceGhs, 0)) : 'Nothing outstanding.'}</p>
         </section>
+        )}
+        {showPortalSection('messages', filter) && (
         <section className="rounded-xl border bg-white p-5">
           <h2 className="font-medium">Messages</h2>
           <ul className="mt-2 text-sm">
-            {notes.map((n) => (
+            {visibleNotes.map((n) => (
               <li key={n.id}>
                 {n.title}: {n.body}
               </li>
             ))}
+            {visibleNotes.length === 0 && <li className="text-slate-500">No messages.</li>}
           </ul>
         </section>
+        )}
       </div>
     </div>
   );

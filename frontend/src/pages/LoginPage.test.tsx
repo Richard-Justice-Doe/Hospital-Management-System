@@ -18,7 +18,7 @@ describe('LoginPage', () => {
     );
 
     expect(screen.getByRole('heading', { name: /clinic management system/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/username or email/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: /patient portal/i }).length).toBeGreaterThan(0);

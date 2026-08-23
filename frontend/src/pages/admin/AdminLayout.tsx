@@ -5,7 +5,7 @@ import { ROLE_LABELS } from '../../workflow/types';
 
 const TABS = [
   { to: '/care/admin/overview', label: 'Overview' },
-  { to: '/care/admin/staff', label: 'Staff' },
+  { to: '/care/admin/staff', label: 'Users' },
   { to: '/care/admin/services', label: 'Services' },
   { to: '/care/admin/patients', label: 'Patients' },
   { to: '/care/admin/claims', label: 'Claims' },

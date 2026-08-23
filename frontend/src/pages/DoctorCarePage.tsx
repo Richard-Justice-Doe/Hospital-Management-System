@@ -14,6 +14,11 @@ import { evaluateCds } from '../workflow/his';
 import { canControlDepartment } from '../workflow/types';
 import type { Department, VisitDisposition } from '../workflow/types';
 import DepartmentShiftPanel from '../components/DepartmentShiftPanel';
+import RecordSavedModal from '../components/RecordSavedModal';
+import { promptKindForDepartment, type PromptKind } from '../components/ActionPrompt';
+import { DEPT_PICTURE } from '../workflow/deskUi';
+import { isOutOfStock } from '../workflow/pharmacyStock';
+import PatientJourneyCard from '../components/PatientJourneyCard';
 
 const PICKABLE: Department[] = [
   'LAB',
@@ -40,6 +45,7 @@ export default function DoctorCarePage() {
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [cdsOverride, setCdsOverride] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [prompt, setPrompt] = useState<{ kind: PromptKind; name: string; detail: string; destinations?: PromptKind[] } | null>(null);
   const isHead = canControlDepartment(user, 'CONSULTATION');
   const [form, setForm] = useState({
     diagnosis: '',
@@ -71,7 +77,25 @@ export default function DoctorCarePage() {
       return;
     }
     setError(null);
+    const name = `${patient?.firstName ?? ''} ${patient?.lastName ?? ''}`.trim() || 'Patient';
+    const dests = new Set(enabled.filter((item) => selectedServices.includes(item.id)).map((item) => item.department));
+    if (form.prescription.trim()) dests.add('PHARMACY');
+    if (form.disposition === 'ADMITTED') dests.add('WARD');
     planVisit(selected.id, { ...form, serviceIds: selectedServices, soapAssessment: form.diagnosis, soapPlan: form.notes });
+    const labels = [...dests].map((dept) => DEPARTMENT_LABELS[dept]);
+    const kind: PromptKind =
+      dests.size === 1 ? promptKindForDepartment([...dests][0]) : dests.size > 1 ? 'sent_services' : 'sent_accounts';
+    setPrompt({
+      kind,
+      name,
+      destinations: [...dests].map((dept) => promptKindForDepartment(dept)),
+      detail:
+        dests.size === 0
+          ? `Consult saved. Send ${name} to Accounts to pay.`
+          : dests.size === 1
+            ? `Send ${name} to ${labels[0]}.`
+            : `Send ${name} to: ${labels.join(', ')}.`,
+    });
     setForm({ diagnosis: '', prescription: '', notes: '', disposition: 'DISCHARGED', referredTo: '' });
     setSelectedServices([]);
     setCdsOverride(false);
@@ -80,13 +104,27 @@ export default function DoctorCarePage() {
 
   return (
     <div className="p-6">
+      {prompt && (
+        <RecordSavedModal
+          kind={prompt.kind}
+          patientName={prompt.name}
+          detail={prompt.detail}
+          destinations={prompt.destinations}
+          onClose={() => setPrompt(null)}
+        />
+      )}
       <h1 className="text-xl font-semibold text-clinic-900">Doctor</h1>
+      {labReview.length > 0 && (
+        <p className="mt-3 rounded-2xl bg-violet-100 px-4 py-3 text-sm font-semibold text-violet-900">
+          🧪 Lab ready — {labReview.length} patient{labReview.length === 1 ? '' : 's'} have results to review.
+        </p>
+      )}
       <DepartmentShiftPanel department="CONSULTATION" />
 
       {isHead && (
         <div className="mt-6">
           <DepartmentBillsPanel
-            department="ALL"
+            department="CONSULTATION"
             visits={state.visits}
             patients={state.patients}
             onRemove={removeFromBill}
@@ -101,7 +139,11 @@ export default function DoctorCarePage() {
             <p className="mt-1 text-xs font-medium text-clinic-700">{labReview.length} with lab results to review</p>
           )}
           <ul className="mt-3 space-y-2">
-            {queue.length === 0 && <li className="text-sm text-slate-500">No patients waiting.</li>}
+            {queue.length === 0 && (
+              <li className="rounded-lg border border-dashed border-slate-200 px-3 py-8 text-center text-sm text-slate-500">
+                No patients waiting. Nursing will send the next person after vitals.
+              </li>
+            )}
             {queue.map((v) => {
               const p = state.patients.find((x) => x.id === v.patientId);
               const flagged = (v.vitals?.abnormalFlags.length ?? 0) > 0;
@@ -123,12 +165,24 @@ export default function DoctorCarePage() {
                     }}
                     className={`w-full rounded-lg border px-3 py-2 text-left text-sm hover:bg-clinic-50 ${selectedId === v.id ? 'border-clinic-500 bg-clinic-50' : 'border-slate-100'}`}
                   >
-                    <PatientIdentity patient={p} />
+                    <div className="flex items-start justify-between gap-2">
+                      <PatientIdentity patient={p} />
+                      {v.queueNo ? (
+                        <span className="rounded-full bg-clinic-100 px-2 py-0.5 font-mono text-xs font-semibold text-clinic-800">
+                          #{v.queueNo}
+                        </span>
+                      ) : null}
+                    </div>
                     {flagged && <span className="ml-2 text-xs text-red-600">Abnormal vitals</span>}
                     {labsReady && <span className="ml-2 text-xs font-medium text-clinic-700">Lab results ready</span>}
                     <p className="mt-1 text-xs text-slate-500">
                       {CLINIC_LABELS[v.clinic ?? 'GENERAL']} · {v.reason}
                     </p>
+                    {v.vitals && (
+                      <p className="mt-1 text-xs text-slate-600">
+                        BP {v.vitals.systolicBp}/{v.vitals.diastolicBp} · {v.vitals.temperatureC}°C · Pulse {v.vitals.pulseBpm} · SpO2 {v.vitals.spo2}%
+                      </p>
+                    )}
                   </button>
                 </li>
               );
@@ -158,6 +212,9 @@ export default function DoctorCarePage() {
                     )}
                   </div>
                   <StageBadge stage={selected.stage} />
+                </div>
+                <div className="mt-3">
+                  <PatientJourneyCard patient={patient} visit={selected} />
                 </div>
                 {selected.history && (
                   <p className="mt-3 rounded bg-slate-50 p-2 text-sm text-slate-600">History: {selected.history}</p>
@@ -216,7 +273,7 @@ export default function DoctorCarePage() {
                   <VisitChargeSummary
                     visit={selected}
                     showResults
-                    managedDepartment={undefined}
+                    managedDepartment="CONSULTATION"
                     onRemoveCharge={isHead ? (orderId) => removeFromBill(selected.id, orderId) : undefined}
                   />
                 )}
@@ -278,6 +335,12 @@ export default function DoctorCarePage() {
                     className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
                   />
                 </label>
+                {form.prescription.trim() &&
+                  (state.drugStock ?? []).filter(isOutOfStock).length > 0 && (
+                    <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
+                      Pharmacy out of stock: {(state.drugStock ?? []).filter(isOutOfStock).map((item) => item.name).join(', ')}. Choose another drug if needed.
+                    </p>
+                  )}
                 <label className="block text-sm font-medium text-slate-700">
                   Clinical notes
                   <textarea
@@ -322,7 +385,23 @@ export default function DoctorCarePage() {
                 {error && <p className="text-sm text-red-700">{error}</p>}
                 <div>
                   <p className="text-sm font-medium">Send to hospital services</p>
-                  <p className="text-xs text-slate-500">Tick what this patient needs. Admin can turn items off in Services.</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {PICKABLE.map((dept) => (
+                      <button
+                        key={dept}
+                        type="button"
+                        onClick={() => {
+                          const first = enabled.find((item) => item.department === dept);
+                          if (first) toggleService(first.id);
+                        }}
+                        className="rounded-2xl border bg-white px-3 py-2 text-center text-xs font-semibold hover:bg-clinic-50"
+                      >
+                        <span className="block text-2xl">{DEPT_PICTURE[dept].icon}</span>
+                        {DEPT_PICTURE[dept].label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">Tick what this patient needs. Admin can turn items off in Services.</p>
                   <div className="mt-2 max-h-72 space-y-3 overflow-auto rounded-lg border border-slate-100 p-3">
                     {PICKABLE.map((dept) => {
                       const items = enabled.filter((s) => s.department === dept);

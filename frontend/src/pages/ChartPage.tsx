@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCare } from '../context/CareContext';
 import PatientIdentity from '../components/PatientIdentity';
@@ -17,20 +18,25 @@ import {
 } from '../workflow/his';
 import { searchPatients } from '../workflow/store';
 import VisitChargeSummary from '../components/VisitChargeSummary';
-import type { NoteSensitivity } from '../workflow/types';
+import { type NoteSensitivity } from '../workflow/types';
+import { canAccessPage } from '../workflow/permissions';
+import { useStaffAccess } from '../hooks/useStaffAccess';
 import { btnPrimary, btnSecondary, inputClass } from './admin/adminUi';
 
 export default function ChartPage() {
   const { user } = useAuth();
   const { state, updateCare, removeFromBill } = useCare();
+  const [params] = useSearchParams();
   const [query, setQuery] = useState('');
-  const [patientId, setPatientId] = useState(state.patients[0]?.id ?? '');
+  const [patientId, setPatientId] = useState(params.get('patient') ?? state.patients[0]?.id ?? '');
   const [reason, setReason] = useState('');
   const [noteBody, setNoteBody] = useState('');
   const [sensitivity, setSensitivity] = useState<NoteSensitivity>('GENERAL');
   const [allergy, setAllergy] = useState({ substance: '', reaction: '', severity: 'moderate' as const });
+  const access = useStaffAccess();
   const staffId = user?.id ?? 'staff-admin';
   const role = user?.role ?? 'ADMIN';
+  const canChart = canAccessPage(access, 'clinical');
 
   const matches = searchPatients(
     state.patients.filter((p) => !p.mergedIntoId),
@@ -134,6 +140,8 @@ export default function ChartPage() {
                 </div>
               )}
 
+              {canChart ? (
+              <>
               <ChartBlock title="Allergies">
                 <ul className="text-sm">
                   {state.allergies
@@ -252,7 +260,7 @@ export default function ChartPage() {
                   onChange={(e) => {
                     if (!e.target.value) return;
                     updateCare((s) =>
-                      addFamilyLink(s, { patientId, relatedPatientId: e.target.value, relationship: 'Sibling' }),
+                      addFamilyLink(s, { patientId, relatedPatientId: e.target.value, relationship: 'Sibling', recordedBy: staffId }),
                     );
                     e.target.value = '';
                   }}
@@ -341,6 +349,12 @@ export default function ChartPage() {
                   </button>
                 </div>
               </ChartBlock>
+              </>
+              ) : (
+                <p className="rounded-xl border bg-white p-5 text-sm text-slate-500">
+                  Allergies, problems, medications, immunizations, family links, and clinical notes are entered by the doctor.
+                </p>
+              )}
             </>
           )}
         </section>

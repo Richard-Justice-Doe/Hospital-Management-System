@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildDashboardSnapshot } from './dashboard';
+import { buildDashboardSnapshot, buildPageDashboard } from './dashboard';
 import { createSeedState } from './seed';
 
 describe('department dashboard', () => {
@@ -16,5 +16,19 @@ describe('department dashboard', () => {
     expect(records?.registration).toBe(5);
     expect(snapshot.trend.length).toBeGreaterThan(0);
     expect(snapshot.trend.reduce((sum, point) => sum + point.visits, 0)).toBe(4);
+  });
+
+  it('builds a claims desk dashboard with NHIS and private queues', () => {
+    const page = buildPageDashboard(createSeedState(), 'claims', 'all');
+    expect(page.title).toBe('Claims dashboard');
+    expect(page.cards.some((card) => card.label === 'NHIS queue')).toBe(true);
+    expect(page.cards.some((card) => card.label === 'Private queue')).toBe(true);
+  });
+
+  it('builds a nursing dashboard instead of a generic hospital view', () => {
+    const page = buildPageDashboard(createSeedState(), 'nursing', 'all');
+    expect(page.title).toBe('Nursing dashboard');
+    expect(page.hospitalWide).toBe(false);
+    expect(page.cards.some((card) => card.label === 'Waiting vitals')).toBe(true);
   });
 });

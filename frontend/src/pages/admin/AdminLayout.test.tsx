@@ -40,7 +40,7 @@ describe('Admin pages', () => {
 
     expect(screen.getByRole('heading', { name: /^admin$/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /overview/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /^staff/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^users$/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /services/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /appointment schedule/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /patient records/i })).toBeInTheDocument();

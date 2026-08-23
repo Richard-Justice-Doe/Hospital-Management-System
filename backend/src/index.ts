@@ -9,6 +9,7 @@ import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 import { createSeedState, ensureDemoStaff } from '../../frontend/src/workflow/seed.ts';
 import { buildClaimPack, hydrateHis, markNoticeDelivered, pendingShiftMessages, sendDueReminders } from '../../frontend/src/workflow/his.ts';
+import { findByHospitalNo } from '../../frontend/src/workflow/patientDb.ts';
 import type { CareState } from '../../frontend/src/workflow/types.ts';
 import {
   addBackup,
@@ -317,13 +318,20 @@ async function main() {
     snapshot('initial', stored);
     loaded = { version: 1, state: stored };
   } else {
+    const staff = ensureDemoStaff(loaded.state.staff);
+    const merged = hydrateHis({ ...loaded.state, staff });
     seedAuth({
-      ...loaded.state,
-      staff: ensureDemoStaff(loaded.state.staff).map((s) => {
+      ...merged,
+      staff: merged.staff.map((s) => {
         const seed = createSeedState().staff.find((row) => row.id === s.id);
         return { ...s, password: s.password || seed?.password || '' };
       }),
     });
+    if (staff.length !== loaded.state.staff.length) {
+      const stored = captureSecrets(loaded.state, merged);
+      saveHospital(stored, loaded.version);
+      loaded = { version: loaded.version, state: stored };
+    }
   }
 
   const app = express();
@@ -342,14 +350,18 @@ async function main() {
       res.status(429).json({ error: 'Too many failed sign-ins. Wait one minute.' });
       return;
     }
-    const email = String(req.body?.email ?? '').trim().toLowerCase();
+    const login = String(req.body?.email ?? req.body?.username ?? req.body?.login ?? '').trim().toLowerCase();
     const password = String(req.body?.password ?? '');
-    const auth = getAuthByEmail(email);
     const hospital = loadHospital();
-    const staff = hospital?.state.staff.find((s) => s.email === email && s.isActive);
+    const staff = hospital?.state.staff.find((s) => {
+      if (!s.isActive) return false;
+      const username = (s.username || s.email.split('@')[0] || '').toLowerCase();
+      return s.email.toLowerCase() === login || username === login;
+    });
+    const auth = staff ? getAuthByStaffId(staff.id) ?? getAuthByEmail(staff.email) : getAuthByEmail(login);
     if (!auth || !staff || !bcrypt.compareSync(password, auth.password_hash)) {
       const locked = failLogin(req);
-      res.status(401).json({ error: locked ? 'Too many failed sign-ins. Wait one minute.' : 'Invalid email or password' });
+      res.status(401).json({ error: locked ? 'Too many failed sign-ins. Wait one minute.' : 'Invalid username, email, or password' });
       return;
     }
     clearLoginGuard(guardKey(req));
@@ -400,7 +412,7 @@ async function main() {
       return;
     }
     if (version !== hospital.version) {
-      res.status(409).json({ error: 'Record changed on another desk', version: hospital.version, state: publicState(hospital.state) });
+      res.status(409).json({ error: 'Record changed on another desk', version: hospital.version, state: publicState(hydrateHis(hospital.state)) });
       return;
     }
     const stored = await deliverShiftNotices(captureSecrets(hospital.state, hydrateHis({ ...hospital.state, ...incoming })));
@@ -438,12 +450,14 @@ async function main() {
   });
 
   app.post('/api/portal/login', (req, res) => {
-    const hospitalNo = String(req.body?.hospitalNo ?? '').replace(/\s/g, '').toLowerCase();
+    const hospitalNo = String(req.body?.hospitalNo ?? '');
     const pin = String(req.body?.pin ?? '').trim();
     const hospital = loadHospital();
-    const patient = hospital?.state.patients.find(
-      (p) => p.hospitalNo.replace(/\s/g, '').toLowerCase() === hospitalNo && !p.mergedIntoId,
-    );
+    const patient = hospital ? findByHospitalNo(hospital.state.patients, hospitalNo) : undefined;
+    if (patient?.mergedIntoId) {
+      res.status(401).json({ error: 'Invalid folder number or PIN.' });
+      return;
+    }
     const hash = patient ? getPinHash(patient.id) : undefined;
     if (!patient || !hash || !bcrypt.compareSync(pin, hash)) {
       res.status(401).json({ error: 'Invalid folder number or PIN.' });
