@@ -5,6 +5,7 @@ import { DEPARTMENT_LABELS, formatGhs } from '../workflow/catalog';
 import { isLowSupply, pharmacyRestockOrders, receivePurchase, requestPurchase, setPurchaseStatus } from '../workflow/supportDesks';
 import type { Department } from '../workflow/types';
 import { btnPrimary, btnSecondary, EmptyState, Field, inputClass } from './admin/adminUi';
+import { DeskPage, PageHeader } from '../components/PageChrome';
 
 export default function ProcurementPage() {
   const { user } = useAuth();
@@ -22,15 +23,13 @@ export default function ProcurementPage() {
   const pharmacyRequests = pharmacyRestockOrders(state);
 
   return (
-    <div className="space-y-4 p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-clinic-900">Procurement</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Raise a request — Accounts receives it as something to purchase. Then mark it ordered, and stores receives the goods.
-        </p>
-      </div>
+    <DeskPage className="space-y-4">
+      <PageHeader
+        title="Procurement"
+        hint="Raise a request — Accounts receives it as something to purchase. Then mark it ordered, and stores receives the goods."
+      />
 
-      <section className="rounded-xl border border-red-100 bg-white p-5">
+      <section className="desk-panel border-red-100 p-5">
         <h2 className="font-medium text-slate-900">From pharmacy</h2>
         <p className="mt-1 text-sm text-slate-600">Pharmacists send empty or low medicines here as purchase requests.</p>
         {pharmacyRequests.length === 0 ? (
@@ -65,7 +64,7 @@ export default function ProcurementPage() {
         )}
       </section>
 
-      <section className="rounded-xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <h2 className="font-medium text-slate-900">Low stock in stores</h2>
         <ul className="mt-2 text-sm text-slate-700">
           {state.supplies.filter(isLowSupply).map((item) => (
@@ -78,7 +77,7 @@ export default function ProcurementPage() {
       </section>
 
       <form
-        className="grid gap-3 rounded-xl border bg-white p-5 sm:grid-cols-2"
+        className="grid gap-3 desk-panel p-5 sm:grid-cols-2"
         onSubmit={(e) => {
           e.preventDefault();
           updateCare((next) =>
@@ -147,7 +146,7 @@ export default function ProcurementPage() {
         </button>
       </form>
 
-      <section className="rounded-xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <h2 className="font-medium text-slate-900">Purchase orders</h2>
         {orders.filter((row) => !pharmacyRequests.some((item) => item.id === row.id)).length === 0 ? (
           <div className="mt-3">
@@ -194,6 +193,6 @@ export default function ProcurementPage() {
           </ul>
         )}
       </section>
-    </div>
+    </DeskPage>
   );
 }

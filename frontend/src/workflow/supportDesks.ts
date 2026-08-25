@@ -20,7 +20,11 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-export function claimSchemeOf(patient?: Pick<PatientRecord, 'insuranceType'> | null): ClaimScheme | undefined {
+export function claimSchemeOf(
+  patient?: Pick<PatientRecord, 'insuranceType'> | null,
+  visit?: Pick<VisitRecord, 'coverAsPrivate'> | null,
+): ClaimScheme | undefined {
+  if (visit?.coverAsPrivate) return undefined;
   if (patient?.insuranceType === 'GOVERNMENT') return 'NHIS';
   if (patient?.insuranceType === 'PRIVATE') return 'PRIVATE';
   return undefined;
@@ -42,7 +46,7 @@ export function claimQueue(state: CareState): ClaimQueueRow[] {
   for (const visit of state.visits) {
     const patient = state.patients.find((item) => item.id === visit.patientId);
     const claim = state.claims.find((item) => item.visitId === visit.id);
-    const scheme = claim?.scheme ?? claimSchemeOf(patient);
+    const scheme = claim?.scheme ?? claimSchemeOf(patient, visit);
     if (!scheme) continue;
     rows.push({ visit, patient, claim, scheme });
   }

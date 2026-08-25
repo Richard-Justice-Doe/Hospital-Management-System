@@ -27,6 +27,7 @@ import {
   staffActivity,
   upsertCopayer,
   upsertPatient,
+  updatePatientFolder,
   upsertStaff,
   visitsToday,
   type PatientAdminInput,
@@ -38,6 +39,7 @@ import type {
   ClinicId,
   CopayerRecord,
   CopayerRelationship,
+  InsuranceType,
   PatientRecord,
   StaffAccount,
   StaffRole,
@@ -64,7 +66,12 @@ interface CareContextValue {
   state: CareState;
   syncError: string | null;
   registerNewPatient: (input: PatientAdminInput & { reason: string; clinic?: ClinicId; copayerId?: string }) => string;
-  createFolder: (input: PatientAdminInput) => { ok: true; hospitalNo: string; portalPin?: string } | { ok: false; error: string };
+  createFolder: (input: PatientAdminInput) =>
+    | { ok: true; hospitalNo: string; portalPin?: string; patient?: PatientRecord }
+    | { ok: false; error: string };
+  updateFolder: (patientId: string, input: PatientAdminInput) =>
+    | { ok: true; patient?: PatientRecord }
+    | { ok: false; error: string };
   openFolder: (patientId: string, staffId: string) => void;
   checkIn: (patientId: string, reason: string, staffId: string, clinic?: ClinicId, copayerId?: string) => void;
   saveCopayer: (input: {
@@ -76,6 +83,11 @@ interface CareContextValue {
     phone: string;
     address?: string;
     isPrimary?: boolean;
+    insuranceType?: InsuranceType;
+    insuranceProvider?: string;
+    insuranceNumber?: string;
+    ghanaCardNo?: string;
+    hinNumber?: string;
   }) => void;
   removeCopayer: (copayerId: string) => void;
   patientCopayers: (patientId: string) => CopayerRecord[];
@@ -234,9 +246,16 @@ export function CareProvider({ children }: { children: ReactNode }) {
       createFolder: (input) => {
         const result = allocatePatientFolder(state, input);
         if ('error' in result) return { ok: false, error: result.error };
-        const pin = result.state.patients[0]?.portalPin;
+        const created = result.state.patients[0];
         commit(result.state);
-        return { ok: true, hospitalNo: result.hospitalNo ?? '', portalPin: pin };
+        return { ok: true, hospitalNo: result.hospitalNo ?? '', portalPin: created?.portalPin, patient: created };
+      },
+      updateFolder: (patientId, input) => {
+        const result = updatePatientFolder(state, patientId, input);
+        if (result.error) return { ok: false, error: result.error };
+        const patient = result.state.patients.find((item) => item.id === patientId);
+        commit(result.state);
+        return { ok: true, patient };
       },
       openFolder: (patientId, staffId) => commit(openPatientFolder(state, patientId, staffId)),
       checkIn: (patientId, reason, staffId, clinic, copayerId) =>

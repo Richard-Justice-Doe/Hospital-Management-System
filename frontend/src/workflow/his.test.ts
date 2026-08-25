@@ -11,6 +11,7 @@ import {
   mergePatients,
   qualityMetrics,
   scheduleShift,
+  scheduleMonthShifts,
   upsertClaim,
   verifyEligibility,
 } from './his';
@@ -121,6 +122,44 @@ describe('HIS layer', () => {
     expect(result.shift?.staffId).toBe('staff-lab');
     expect(result.state.shifts.some((sh) => sh.id === result.shift?.id && sh.department === 'LAB')).toBe(true);
     expect(result.state.notifications.some((n) => n.kind === 'shift' && n.staffId === 'staff-lab')).toBe(true);
+  });
+
+  it('rosters a worker for every day of a month with one notice', () => {
+    const result = scheduleMonthShifts(createSeedState(), {
+      staffId: 'staff-lab',
+      department: 'LAB',
+      month: '2026-11',
+      startHour: 7,
+      endHour: 15,
+      createdBy: 'staff-lab-head',
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.added).toBe(30);
+    expect(result.state.shifts.filter((shift) => shift.staffId === 'staff-lab' && shift.day.startsWith('2026-11'))).toHaveLength(30);
+    expect(result.state.notifications.filter((n) => n.kind === 'shift' && n.staffId === 'staff-lab' && n.body.includes('throughout'))).toHaveLength(1);
+  });
+
+  it('can roster weekdays only and skip days that already clash', () => {
+    const weekdays = scheduleMonthShifts(createSeedState(), {
+      staffId: 'staff-lab',
+      department: 'LAB',
+      month: '2026-11',
+      startHour: 7,
+      endHour: 15,
+      createdBy: 'staff-lab-head',
+      weekdaysOnly: true,
+    });
+    expect(weekdays.added).toBe(21);
+    const again = scheduleMonthShifts(weekdays.state, {
+      staffId: 'staff-lab',
+      department: 'LAB',
+      month: '2026-11',
+      startHour: 7,
+      endHour: 15,
+      createdBy: 'staff-lab-head',
+    });
+    expect(again.added).toBe(9);
+    expect(again.skipped).toBe(21);
   });
 
   it('builds a demo claim and NHIS eligibility stub', () => {

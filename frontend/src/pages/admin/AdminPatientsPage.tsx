@@ -24,7 +24,7 @@ export default function AdminPatientsPage() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(20rem,0.9fr)]">
-      <section className="rounded-xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <h2 className="font-medium text-slate-900">Patient records</h2>
         <div className="mt-4">
           <SearchBox value={query} onChange={setQuery} placeholder="Search folder number, name, or phone" />
@@ -108,7 +108,7 @@ export default function AdminPatientsPage() {
       </section>
 
       {draft && (
-        <section className="h-fit rounded-xl border bg-white p-5">
+        <section className="h-fit desk-panel p-5">
           <h2 className="font-medium text-slate-900">Edit record</h2>
           <p className="mt-1 font-mono text-sm font-semibold text-clinic-700">{draft.hospitalNo}</p>
           <form

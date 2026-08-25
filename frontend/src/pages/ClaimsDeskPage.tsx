@@ -15,6 +15,7 @@ import {
   visitClaimAmount,
 } from '../workflow/supportDesks';
 import { btnPrimary, btnSecondary, EmptyState, Field, inputClass } from './admin/adminUi';
+import { DeskPage, PageHeader } from '../components/PageChrome';
 
 const QUEUES: Array<{ id: ClaimsTab; label: string }> = [
   { id: 'nhis', label: 'NHIS / Ghana Card' },
@@ -75,15 +76,13 @@ export default function ClaimsDeskPage() {
   }
 
   return (
-    <div className="space-y-4 p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-clinic-900">Claims desk</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Choose the queue, then pick the claim from the list. When you submit, an Excel file is prepared for the accountant. They check it before anything goes to NHIS or government for remittance.
-        </p>
-      </div>
+    <DeskPage className="space-y-4">
+      <PageHeader
+        title="Claims desk"
+        hint="Choose the queue, then pick the claim from the list. When you submit, an Excel file is prepared for the accountant. They check it before anything goes to NHIS or government for remittance."
+      />
 
-      <section className="rounded-xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Claims queue">
             <select
@@ -141,7 +140,7 @@ export default function ClaimsDeskPage() {
       {!selected ? (
         <EmptyState title="No claim selected" hint="Pick a claim from the list above." />
       ) : (
-        <section className="rounded-xl border bg-white p-5">
+        <section className="desk-panel p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <PatientIdentity patient={selected.patient} />
@@ -186,6 +185,6 @@ export default function ClaimsDeskPage() {
           <p className="sr-only">{user?.id}</p>
         </section>
       )}
-    </div>
+    </DeskPage>
   );
 }

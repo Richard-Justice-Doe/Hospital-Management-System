@@ -12,16 +12,23 @@ import {
   savePatientDatabase,
 } from './patientDb';
 import type {
+  BloodGroup,
   CareState,
   ClinicId,
   CopayerRecord,
   CopayerRelationship,
   Department,
+  FolderPaymentMethod,
   Gender,
   HospitalService,
   InsuranceType,
+  KinContact,
   LabLine,
+  MaritalStatus,
+  NhisStatus,
   PatientRecord,
+  PatientSponsor,
+  RegistrationVisitType,
   ServiceOrder,
   StaffAccount,
   StaffRole,
@@ -29,7 +36,7 @@ import type {
   VisitRecord,
 } from './types';
 import { formatReceiptNo, getClinic } from './catalog';
-import { ageFromDob, hasGhanaNhiss, normalizeCcCode, visitMissingRequiredCc } from './patientAdmin';
+import { ageFromDob, hasGhanaNhiss, isValidCcCode, normalizeCcCode, visitMissingRequiredCc } from './patientAdmin';
 import { evaluateVitals, type VitalsInput } from './vitals';
 
 export const CARE_STORAGE_KEY = 'cms_care_workflow_v6';
@@ -199,53 +206,173 @@ function isFolderOnlyVisit(visit: VisitRecord): boolean {
   );
 }
 
+export function visitDay(iso?: string, now = new Date()): string {
+  const date = iso ? new Date(iso) : now;
+  if (Number.isNaN(date.getTime())) return (iso ?? '').slice(0, 10);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+export function visitOnProcessDate(visits: VisitRecord[], patientId: string, day: string): VisitRecord | undefined {
+  return visits.find((visit) => visit.patientId === patientId && visitDay(visit.checkedInAt) === day && !isFolderOnlyVisit(visit));
+}
+
+function trimText(value?: string): string | undefined {
+  const text = value?.trim();
+  return text ? text : undefined;
+}
+
+function kinFrom(
+  name?: string,
+  relationship?: CopayerRelationship,
+  phone?: string,
+  address?: string,
+): KinContact | undefined {
+  if (!trimText(name) || !trimText(phone)) return undefined;
+  return {
+    name: name!.trim(),
+    relationship: relationship ?? 'Other',
+    phone: phone!.trim(),
+    address: trimText(address),
+  };
+}
+
 export type PatientAdminInput = {
   firstName: string;
   lastName: string;
+  otherNames?: string;
   age?: number;
+  ageEstimated?: boolean;
   dateOfBirth?: string;
   gender: Gender;
   phone: string;
+  phoneAlt?: string;
   email?: string;
   address?: string;
   town?: string;
+  hometown?: string;
+  maritalStatus?: MaritalStatus;
+  occupation?: string;
+  nextOfKinName?: string;
+  nextOfKinRelationship?: CopayerRelationship;
+  nextOfKinPhone?: string;
+  nextOfKinAddress?: string;
   insuranceType?: InsuranceType;
   insuranceProvider?: string;
   insuranceNumber?: string;
   ghanaCardNo?: string;
   hinNumber?: string;
+  nhisStatus?: NhisStatus;
+  nhisExpires?: string;
+  preferredPayment?: FolderPaymentMethod;
+  guarantorName?: string;
+  guarantorPhone?: string;
+  guarantorAddress?: string;
+  guarantorRelationship?: CopayerRelationship;
   photoUrl?: string;
+  fingerprintCaptured?: boolean;
+  fingerprintUrl?: string;
   hospitalNo?: string;
+  physicalFolderNo?: string;
   folderDate?: string;
   portalPin?: string;
   relatedStaffId?: string;
   staffRelation?: CopayerRelationship | 'Self';
   staffId: string;
+  registrationVisitType?: RegistrationVisitType;
+  referringFacility?: string;
+  registeredClinic?: ClinicId;
+  assignedDoctorStaffId?: string;
+  emergencyName?: string;
+  emergencyRelationship?: CopayerRelationship;
+  emergencyPhone?: string;
+  emergencyAddress?: string;
+  knownAllergies?: string;
+  bloodGroup?: BloodGroup;
+  consentTreatment?: boolean;
+  consentDataUse?: boolean;
+  consentSignatureUrl?: string;
+  guardianName?: string;
+  guardianRelationship?: CopayerRelationship;
+  guardianPhone?: string;
+  guardianGhanaCard?: string;
+  honorific?: string;
+  religion?: string;
+  educationLevel?: string;
+  district?: string;
+  subDistrict?: string;
+  sponsor?: PatientSponsor;
+  insuranceSerial?: string;
 };
 
 function patientFromInput(input: PatientAdminInput, hospitalNo: string, now: string): PatientRecord {
-  const dateOfBirth = input.dateOfBirth?.trim() || undefined;
+  const dateOfBirth = trimText(input.dateOfBirth);
   const folderCreatedAt = input.folderDate ? new Date(`${input.folderDate}T08:00:00`).toISOString() : now;
+  const ghanaCardNo = trimText(input.ghanaCardNo);
+  const age = dateOfBirth ? ageFromDob(dateOfBirth) : Number(input.age) || 0;
   return {
     id: newId('pat'),
     hospitalNo,
     firstName: input.firstName.trim(),
     lastName: input.lastName.trim(),
-    age: dateOfBirth ? ageFromDob(dateOfBirth) : Number(input.age) || 0,
+    otherNames: trimText(input.otherNames),
+    age,
+    ageEstimated: !dateOfBirth && Boolean(input.ageEstimated || input.age),
     dateOfBirth,
     gender: input.gender,
     phone: input.phone.trim(),
-    email: input.email?.trim() || undefined,
-    address: input.address?.trim() || undefined,
-    town: input.town?.trim() || undefined,
+    phoneAlt: trimText(input.phoneAlt),
+    email: trimText(input.email),
+    address: trimText(input.address),
+    town: trimText(input.town),
+    hometown: trimText(input.hometown),
+    maritalStatus: input.maritalStatus,
+    occupation: trimText(input.occupation),
+    nextOfKin: kinFrom(input.nextOfKinName, input.nextOfKinRelationship, input.nextOfKinPhone, input.nextOfKinAddress),
     insuranceType: input.insuranceType,
-    insuranceProvider: input.insuranceType === 'CASH' ? undefined : input.insuranceProvider?.trim() || undefined,
-    insuranceNumber: input.insuranceType === 'CASH' ? undefined : input.insuranceNumber?.trim() || undefined,
-    ghanaCardNo: input.ghanaCardNo?.trim() || undefined,
-    hinNumber: input.hinNumber?.trim() || undefined,
+    insuranceProvider: input.insuranceType === 'CASH' ? undefined : trimText(input.insuranceProvider),
+    insuranceNumber: input.insuranceType === 'CASH' ? undefined : trimText(input.insuranceNumber),
+    ghanaCardNo,
+    hinNumber: trimText(input.hinNumber),
+    nhisStatus: input.nhisStatus,
+    nhisExpires: trimText(input.nhisExpires),
+    preferredPayment: input.preferredPayment,
+    guarantorName: trimText(input.guarantorName),
+    guarantorPhone: trimText(input.guarantorPhone),
+    guarantorAddress: trimText(input.guarantorAddress),
+    guarantorRelationship: input.guarantorRelationship,
     photoUrl: input.photoUrl || undefined,
+    fingerprintCaptured: input.fingerprintCaptured || Boolean(input.fingerprintUrl),
+    fingerprintUrl: input.fingerprintUrl || undefined,
+    physicalFolderNo: trimText(input.physicalFolderNo),
     relatedStaffId: input.relatedStaffId || undefined,
     staffRelation: input.relatedStaffId ? input.staffRelation : undefined,
+    nationalId: ghanaCardNo,
+    preferredLanguage: 'en',
+    registrationVisitType: input.registrationVisitType,
+    referringFacility: trimText(input.referringFacility),
+    registeredClinic: input.registeredClinic,
+    assignedDoctorStaffId: trimText(input.assignedDoctorStaffId),
+    emergencyContact: kinFrom(input.emergencyName, input.emergencyRelationship, input.emergencyPhone, input.emergencyAddress),
+    knownAllergies: trimText(input.knownAllergies),
+    bloodGroup: input.bloodGroup,
+    consentTreatment: Boolean(input.consentTreatment),
+    consentDataUse: Boolean(input.consentDataUse),
+    consentSignatureUrl: input.consentSignatureUrl || undefined,
+    consentAt: input.consentTreatment ? now : undefined,
+    guardianName: trimText(input.guardianName),
+    guardianRelationship: input.guardianRelationship,
+    guardianPhone: trimText(input.guardianPhone),
+    guardianGhanaCard: trimText(input.guardianGhanaCard),
+    honorific: trimText(input.honorific),
+    religion: trimText(input.religion),
+    educationLevel: trimText(input.educationLevel),
+    district: trimText(input.district),
+    subDistrict: trimText(input.subDistrict),
+    sponsor: input.sponsor,
+    insuranceSerial: trimText(input.insuranceSerial),
     createdAt: now,
     folderCreatedAt: Number.isNaN(new Date(folderCreatedAt).getTime()) ? now : folderCreatedAt,
     folderCreatedBy: input.staffId,
@@ -256,6 +383,30 @@ export type CreateFolderResult = { state: CareState; hospitalNo: string } | { st
 
 export function createPatientFolder(state: CareState, input: PatientAdminInput): CareState {
   return allocatePatientFolder(state, input).state;
+}
+
+export function updatePatientFolder(
+  state: CareState,
+  patientId: string,
+  input: PatientAdminInput,
+): { state: CareState; error?: string } {
+  const existing = state.patients.find((patient) => patient.id === patientId);
+  if (!existing) return { state, error: 'That folder was not found.' };
+  const patched = patientFromInput(input, existing.hospitalNo, existing.createdAt);
+  return {
+    state: upsertPatient(state, {
+      ...existing,
+      ...patched,
+      id: existing.id,
+      hospitalNo: existing.hospitalNo,
+      createdAt: existing.createdAt,
+      folderCreatedAt: existing.folderCreatedAt,
+      folderCreatedBy: existing.folderCreatedBy,
+      portalPin: existing.portalPin,
+      mergedIntoId: existing.mergedIntoId,
+      consentAt: existing.consentAt ?? patched.consentAt,
+    }),
+  };
 }
 
 export function allocatePatientFolder(state: CareState, input: PatientAdminInput): CreateFolderResult {
@@ -329,10 +480,21 @@ export function setVisitCcCode(state: CareState, visitId: string, nhisCcCode: st
   const visit = state.visits.find((item) => item.id === visitId);
   const patient = visit ? state.patients.find((item) => item.id === visit.patientId) : undefined;
   const code = normalizeCcCode(nhisCcCode);
-  if (hasGhanaNhiss(patient) && !code) return state;
+  if (hasGhanaNhiss(patient) && !isValidCcCode(code)) return state;
   return {
     ...state,
     visits: state.visits.map((item) => (item.id === visitId ? { ...item, nhisCcCode: code || undefined } : item)),
+  };
+}
+
+export function setVisitCoverAsPrivate(state: CareState, visitId: string, coverAsPrivate = true): CareState {
+  return {
+    ...state,
+    visits: state.visits.map((item) =>
+      item.id === visitId
+        ? { ...item, coverAsPrivate: coverAsPrivate || undefined, nhisCcCode: coverAsPrivate ? undefined : item.nhisCcCode }
+        : item,
+    ),
   };
 }
 
@@ -380,30 +542,26 @@ export function checkInExisting(
   clinicId: ClinicId = 'GENERAL',
   copayerId?: string,
   nhisCcCode?: string,
+  coverAsPrivate = false,
 ): CareState {
   const clinic = getClinic(clinicId);
   const patient = state.patients.find((p) => p.id === patientId);
+  const today = visitDay();
+  if (visitOnProcessDate(state.visits, patientId, today)) return state;
   const active = state.visits.find((v) => v.patientId === patientId && v.stage !== 'COMPLETED');
-  const code = normalizeCcCode(nhisCcCode) || normalizeCcCode(active?.nhisCcCode);
-  if (hasGhanaNhiss(patient) && !code) return state;
+  const entered = normalizeCcCode(nhisCcCode);
+  const sameVisitCode = active && !isFolderOnlyVisit(active) ? normalizeCcCode(active.nhisCcCode) : '';
+  const code = coverAsPrivate ? '' : entered || sameVisitCode;
+  if (!coverAsPrivate && hasGhanaNhiss(patient) && !isValidCcCode(code)) return state;
 
-  if (active) {
-    if (!isFolderOnlyVisit(active) && active.clinic) {
-      return {
-        ...state,
-        visits: state.visits.map((visit) =>
-          visit.id === active.id
-            ? { ...visit, copayerId: copayerId ?? visit.copayerId, nhisCcCode: code || visit.nhisCcCode }
-            : visit,
-        ),
-      };
-    }
+  if (active && (isFolderOnlyVisit(active) || !active.clinic)) {
     let next: VisitRecord = {
       ...active,
       clinic: clinic.id,
       reason: reason.trim(),
       copayerId: copayerId ?? active.copayerId,
-      nhisCcCode: code || active.nhisCcCode,
+      nhisCcCode: coverAsPrivate ? undefined : code || active.nhisCcCode,
+      coverAsPrivate: coverAsPrivate || undefined,
       stage: clinic.flow === 'opd' ? 'CHECKED_IN' : 'AWAITING_SERVICES',
       queueNo: active.queueNo ?? nextQueueNo(state.visits, active.checkedInAt),
     };
@@ -418,7 +576,8 @@ export function checkInExisting(
 
   const visit: VisitRecord = {
     ...startVisit(state, patientId, reason, staffId, clinicId, copayerId),
-    nhisCcCode: code || undefined,
+    nhisCcCode: coverAsPrivate ? undefined : code || undefined,
+    coverAsPrivate: coverAsPrivate || undefined,
   };
   const patients =
     patient && !patient.folderCreatedAt
@@ -427,6 +586,56 @@ export function checkInExisting(
         )
       : state.patients;
   return { ...state, patients, visits: [visit, ...state.visits] };
+}
+
+export function savePatientCheckIn(
+  state: CareState,
+  input: {
+    patientId: string;
+    staffId: string;
+    clinic: ClinicId;
+    copayerId?: string;
+    nhisCcCode?: string;
+    onDate?: string;
+    coverAsPrivate?: boolean;
+    lines: Array<{ serviceId: string; qty: number }>;
+  },
+): CareState {
+  const day = input.onDate ?? visitDay();
+  if (visitOnProcessDate(state.visits, input.patientId, day)) return state;
+  let after = checkInExisting(
+    state,
+    input.patientId,
+    '',
+    input.staffId,
+    input.clinic,
+    input.copayerId,
+    input.coverAsPrivate ? undefined : input.nhisCcCode,
+    Boolean(input.coverAsPrivate),
+  );
+  const open = after.visits.find((visit) => visit.patientId === input.patientId && visit.stage !== 'COMPLETED' && visitDay(visit.checkedInAt) === day);
+  if (!open) return after;
+  if (!input.coverAsPrivate && input.nhisCcCode?.trim()) after = setVisitCcCode(after, open.id, input.nhisCcCode);
+  if (input.lines.length > 0) after = appendBillLines(after, open.id, input.lines);
+  const now = new Date().toISOString();
+  return {
+    ...after,
+    visits: after.visits.map((visit) =>
+      visit.id === open.id
+        ? {
+            ...visit,
+            clinic: input.clinic,
+            stage: 'CHECKED_IN',
+            copayerId: input.copayerId || undefined,
+            billable: true,
+            billingDecidedAt: now,
+            billingDecidedBy: input.staffId,
+            coverAsPrivate: input.coverAsPrivate || visit.coverAsPrivate,
+            nhisCcCode: input.coverAsPrivate ? undefined : visit.nhisCcCode,
+          }
+        : visit,
+    ),
+  };
 }
 
 export function recordVitals(state: CareState, visitId: string, vitals: VitalsInput, staffId: string): CareState {
@@ -537,6 +746,37 @@ export function addCharges(
         next = addServiceIfMissing(next, state.services, id, status);
       }
       if (next.stage === 'READY_TO_BILL' && next.orders.some((o) => o.status === 'ORDERED')) {
+        next = { ...next, stage: 'AWAITING_SERVICES' };
+      }
+      return next;
+    }),
+  };
+}
+
+export function appendBillLines(
+  state: CareState,
+  visitId: string,
+  lines: Array<{ serviceId: string; qty: number }>,
+): CareState {
+  return {
+    ...state,
+    visits: state.visits.map((visit) => {
+      if (visit.id !== visitId || visit.stage === 'COMPLETED') return visit;
+      const extra: ServiceOrder[] = [];
+      for (const line of lines) {
+        const qty = Math.max(1, Math.floor(Number(line.qty)) || 1);
+        const service = state.services.find((item) => item.id === line.serviceId && item.enabled);
+        if (!service) continue;
+        extra.push({
+          ...orderFromService(service, 'DONE'),
+          qty,
+          unitPriceGhs: service.priceGhs,
+          priceGhs: Math.round(service.priceGhs * qty * 100) / 100,
+        });
+      }
+      if (extra.length === 0) return visit;
+      let next: VisitRecord = { ...visit, orders: [...visit.orders, ...extra] };
+      if (next.stage === 'READY_TO_BILL' && next.orders.some((order) => order.status === 'ORDERED')) {
         next = { ...next, stage: 'AWAITING_SERVICES' };
       }
       return next;
@@ -820,11 +1060,17 @@ export function upsertCopayer(
     phone: string;
     address?: string;
     isPrimary?: boolean;
+    insuranceType?: InsuranceType;
+    insuranceProvider?: string;
+    insuranceNumber?: string;
+    ghanaCardNo?: string;
+    hinNumber?: string;
   },
 ): CareState {
   const now = new Date().toISOString();
   const copayers = state.copayers ?? [];
   const id = input.id ?? newId('pay');
+  const cover = input.insuranceType;
   const record: CopayerRecord = {
     id,
     patientId: input.patientId,
@@ -834,6 +1080,11 @@ export function upsertCopayer(
     phone: input.phone.trim(),
     address: input.address?.trim() || undefined,
     isPrimary: Boolean(input.isPrimary),
+    insuranceType: cover,
+    insuranceProvider: cover === 'PRIVATE' ? input.insuranceProvider?.trim() || undefined : cover === 'GOVERNMENT' ? 'NHIS' : undefined,
+    insuranceNumber: cover && cover !== 'CASH' ? input.insuranceNumber?.trim() || undefined : undefined,
+    ghanaCardNo: cover === 'GOVERNMENT' ? input.ghanaCardNo?.trim() || undefined : undefined,
+    hinNumber: cover === 'GOVERNMENT' ? input.hinNumber?.trim() || undefined : undefined,
     createdAt: copayers.find((c) => c.id === id)?.createdAt ?? now,
   };
   const others = copayers.filter((c) => c.id !== id);
@@ -972,16 +1223,23 @@ export function staffActivity(state: CareState): { staffId: string; name: string
 export function searchPatients(patients: PatientRecord[], query: string): PatientRecord[] {
   const q = query.trim().toLowerCase();
   if (!q) return patients;
+  const qDigits = query.replace(/\D/g, '');
   const exact = findByHospitalNo(patients, query);
-  const matches = patients.filter(
-    (p) =>
+  const matches = patients.filter((p) => {
+    const name = [p.firstName, p.otherNames, p.lastName].filter(Boolean).join(' ').toLowerCase();
+    const phones = `${p.phone ?? ''} ${p.phoneAlt ?? ''}`.toLowerCase();
+    const phoneDigits = `${p.phone ?? ''}${p.phoneAlt ?? ''}`.replace(/\D/g, '');
+    return (
       p.hospitalNo.toLowerCase().includes(q) ||
+      (p.physicalFolderNo ?? '').toLowerCase().includes(q) ||
       p.id.toLowerCase().includes(q) ||
-      p.firstName.toLowerCase().includes(q) ||
-      p.lastName.toLowerCase().includes(q) ||
-      `${p.firstName} ${p.lastName}`.toLowerCase().includes(q) ||
-      p.phone.includes(q),
-  );
+      name.includes(q) ||
+      phones.includes(q) ||
+      (qDigits.length >= 4 && phoneDigits.includes(qDigits)) ||
+      (p.insuranceProvider ?? '').toLowerCase().includes(q) ||
+      (p.insuranceNumber ?? '').toLowerCase().includes(q)
+    );
+  });
   if (exact && !matches.some((p) => p.id === exact.id)) return [exact, ...matches];
   if (exact) return [exact, ...matches.filter((p) => p.id !== exact.id)];
   return matches;

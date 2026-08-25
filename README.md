@@ -135,7 +135,7 @@ In-charge password is `HeadPass1!` except ward and theatre heads.
 
 In-charge accounts only control **their own department** (roster, unpaid department bills). They no longer open every clinic page. Admin can grant extra pages, or hide default pages, per person on **Admin → Staff**. Admin hospital setup stays Admin-only.
 
-The left menu is grouped as **My work**, **Desk tools**, and **Hospital setup**. Reception sees only reception work (folders, check-in, visits, appointments). A nurse sees nursing, a ward nurse sees the ward, lab sees the laboratory, and so on. Shared desk tools are **Find patient**, **Messages**, **My shifts**, and **Ask AI**. Admin can grant extra pages on **Admin → Staff**.
+The left menu is grouped as **My work**, **Desk tools**, and **Hospital setup**. Reception sees only reception work (folders, check-in, visits, appointments). A nurse sees nursing, a ward nurse sees the ward, lab sees the laboratory, and so on. Shared desk tools are **Find patient**, **Messages**, **My shifts**, and **Assistant**. Admin can grant extra pages on **Admin → Staff**.
 
 ## Department shift schedule
 

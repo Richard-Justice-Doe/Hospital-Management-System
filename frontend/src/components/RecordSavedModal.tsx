@@ -1,7 +1,7 @@
 import ActionPrompt, { type PromptKind } from './ActionPrompt';
 
 export default function RecordSavedModal({
-  title: _title,
+  title,
   kind,
   patientName,
   detail,
@@ -25,6 +25,7 @@ export default function RecordSavedModal({
 }) {
   return (
     <ActionPrompt
+      title={title}
       kind={kind}
       patientName={patientName}
       detail={detail}

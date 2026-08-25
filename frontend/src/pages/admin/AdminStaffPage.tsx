@@ -196,7 +196,7 @@ export default function AdminStaffPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">User management</h2>
+          <h2 className="desk-section-title">User management</h2>
           <p className="mt-1 text-sm text-slate-500">
             {counts.active} active · {counts.all} accounts · {counts.custom} with custom pages
           </p>
@@ -233,7 +233,7 @@ export default function AdminStaffPage() {
 
       {view === 'users' && (
         <div className={`grid gap-6 ${showForm ? 'lg:grid-cols-[minmax(0,1.2fr)_minmax(22rem,0.8fr)]' : ''}`}>
-          <section className="rounded-xl border bg-white p-5">
+          <section className="desk-panel p-5">
             <div className="flex flex-wrap items-center gap-2">
               <SearchBox value={query} onChange={setQuery} placeholder="Search name, username, email, or role" />
               {(['ALL', 'ACTIVE', 'INACTIVE'] as StaffFilter[]).map((item) => (
@@ -368,7 +368,7 @@ export default function AdminStaffPage() {
           </section>
 
           {showForm && (
-            <section className="h-fit rounded-xl border bg-white p-5">
+            <section className="h-fit desk-panel p-5">
               <h3 className="font-medium text-slate-900">{editingId ? 'Edit user' : 'New user'}</h3>
               {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
               <form
@@ -618,7 +618,7 @@ function RolesPanel({ staff, onOpenRole }: { staff: StaffAccount[]; onOpenRole: 
             key={role}
             type="button"
             onClick={() => onOpenRole(role)}
-            className="rounded-xl border bg-white p-4 text-left hover:border-clinic-400 hover:bg-clinic-50"
+            className="desk-panel p-4 text-left hover:border-clinic-400 hover:bg-clinic-50"
           >
             <p className="font-semibold text-slate-900">{ROLE_LABELS[role]}</p>
             <p className="mt-1 text-sm text-slate-500">{ROLE_BLURBS[role]}</p>
@@ -649,7 +649,7 @@ function PermissionMatrix() {
   }
 
   return (
-    <section className="overflow-x-auto rounded-xl border bg-white">
+    <section className="overflow-x-auto desk-panel">
       <p className="border-b px-4 py-3 text-sm text-slate-600">
         Click a cell to allow or remove a page for that role. Admin keeps every page. To change one person only, open Users and choose Set pages.
       </p>

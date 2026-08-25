@@ -14,6 +14,7 @@ import DepartmentShiftPanel from '../components/DepartmentShiftPanel';
 import RecordSavedModal from '../components/RecordSavedModal';
 import { printLabSampleLabel } from '../workflow/printReceipt';
 import { ensureSampleLabel } from '../workflow/itDesk';
+import { DeskPage, PageHeader } from '../components/PageChrome';
 
 export default function LabPage() {
   const { user } = useAuth();
@@ -59,7 +60,7 @@ export default function LabPage() {
   }
 
   return (
-    <div className="p-6">
+    <DeskPage>
       {promptName && (
         <RecordSavedModal
           kind="sent_doctor"
@@ -68,13 +69,11 @@ export default function LabPage() {
           onClose={() => setPromptName(null)}
         />
       )}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-clinic-900">Laboratory</h1>
-          <p className="mt-1 text-sm text-slate-500">Print a sample label, enter results, then send the filled sheet to the doctor.</p>
-        </div>
-        <p className="text-sm font-medium text-clinic-800">{groups.length} visit{groups.length === 1 ? '' : 's'} waiting</p>
-      </div>
+      <PageHeader
+        title="Laboratory"
+        hint="Print a sample label, enter results, then send the filled sheet to the doctor."
+        actions={<p className="text-sm font-semibold text-clinic-800">{groups.length} visit{groups.length === 1 ? '' : 's'} waiting</p>}
+      />
       <DepartmentShiftPanel department="LAB" />
       {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       {isHead && (
@@ -93,7 +92,7 @@ export default function LabPage() {
           const patient = state.patients.find((item) => item.id === visit.patientId);
           const labOrders = visit.orders.filter((order) => order.department === 'LAB');
           return (
-            <li key={visit.id} className="rounded-xl border bg-white p-5">
+            <li key={visit.id} className="desk-panel p-5">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <p>
@@ -175,6 +174,6 @@ export default function LabPage() {
           />
         </div>
       )}
-    </div>
+    </DeskPage>
   );
 }

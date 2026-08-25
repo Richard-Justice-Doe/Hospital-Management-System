@@ -1,13 +1,13 @@
 import type { ReactNode } from 'react';
 
 export const inputClass =
-  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-clinic-500';
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-clinic-500 focus:ring-2 focus:ring-clinic-100';
 export const btnPrimary =
-  'rounded-lg bg-clinic-600 px-4 py-2 text-sm font-medium text-white hover:bg-clinic-700 disabled:opacity-60';
+  'rounded-lg bg-clinic-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-clinic-700 disabled:cursor-not-allowed disabled:opacity-60';
 export const btnSecondary =
-  'rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50';
+  'rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50';
 export const btnDanger =
-  'rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50';
+  'rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50';
 
 export function Field({
   label,

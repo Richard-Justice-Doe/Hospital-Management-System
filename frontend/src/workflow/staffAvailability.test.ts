@@ -7,7 +7,7 @@ describe('staff availability', () => {
     const state = createSeedState();
     const noon = new Date();
     noon.setHours(12, 0, 0, 0);
-    const nurseShift = state.shifts.find((shift) => shift.staffId === 'staff-nurse');
+    const nurseShift = state.shifts.find((shift) => shift.staffId === 'staff-nurse' && shiftCoversAt(shift, noon));
     expect(nurseShift).toBeDefined();
     expect(shiftCoversAt(nurseShift!, noon)).toBe(true);
     const rows = buildStaffAvailability(state, noon);

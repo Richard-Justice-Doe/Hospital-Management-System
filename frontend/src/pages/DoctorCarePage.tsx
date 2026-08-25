@@ -19,6 +19,7 @@ import { promptKindForDepartment, type PromptKind } from '../components/ActionPr
 import { DEPT_PICTURE } from '../workflow/deskUi';
 import { isOutOfStock } from '../workflow/pharmacyStock';
 import PatientJourneyCard from '../components/PatientJourneyCard';
+import { DeskPage, PageHeader } from '../components/PageChrome';
 
 const PICKABLE: Department[] = [
   'LAB',
@@ -103,7 +104,7 @@ export default function DoctorCarePage() {
   }
 
   return (
-    <div className="p-6">
+    <DeskPage>
       {prompt && (
         <RecordSavedModal
           kind={prompt.kind}
@@ -113,10 +114,10 @@ export default function DoctorCarePage() {
           onClose={() => setPrompt(null)}
         />
       )}
-      <h1 className="text-xl font-semibold text-clinic-900">Doctor</h1>
+      <PageHeader title="Doctor" />
       {labReview.length > 0 && (
         <p className="mt-3 rounded-2xl bg-violet-100 px-4 py-3 text-sm font-semibold text-violet-900">
-          🧪 Lab ready — {labReview.length} patient{labReview.length === 1 ? '' : 's'} have results to review.
+          Lab ready — {labReview.length} patient{labReview.length === 1 ? '' : 's'} have results to review.
         </p>
       )}
       <DepartmentShiftPanel department="CONSULTATION" />
@@ -133,7 +134,7 @@ export default function DoctorCarePage() {
       )}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
-        <section className="rounded-xl border bg-white p-5">
+        <section className="desk-panel p-5">
           <h2 className="font-medium">Ready for consult ({queue.length})</h2>
           {labReview.length > 0 && (
             <p className="mt-1 text-xs font-medium text-clinic-700">{labReview.length} with lab results to review</p>
@@ -192,10 +193,10 @@ export default function DoctorCarePage() {
 
         <section className="lg:col-span-2 space-y-4">
           {!selected || !patient ? (
-            <div className="rounded-xl border bg-white p-5 text-sm text-slate-500">Select a patient from the consult queue.</div>
+            <div className="desk-panel p-5 text-sm text-slate-500">Select a patient from the consult queue.</div>
           ) : (
             <>
-              <div className="rounded-xl border bg-white p-5">
+              <div className="desk-panel p-5">
                 <div className="flex items-start justify-between">
                   <div>
                     <h2 className="text-lg font-medium">
@@ -204,7 +205,7 @@ export default function DoctorCarePage() {
                     <p className="text-sm text-slate-500">
                       {patient.age}y {patient.gender} · {patient.phone}
                     </p>
-                    <p className="mt-1 text-sm text-slate-700">Chief complaint: {selected.reason}</p>
+                    {selected.reason ? <p className="mt-1 text-sm text-slate-700">Chief complaint: {selected.reason}</p> : null}
                     {state.allergies.filter((a) => a.patientId === patient.id).length > 0 && (
                       <p className="mt-2 text-sm font-medium text-red-700">
                         Allergies: {state.allergies.filter((a) => a.patientId === patient.id).map((a) => `${a.substance} (${a.reaction})`).join('; ')}
@@ -310,7 +311,7 @@ export default function DoctorCarePage() {
               </div>
 
               <form
-                className="space-y-3 rounded-xl border bg-white p-5"
+                className="space-y-3 desk-panel p-5"
                 onSubmit={(e) => {
                   e.preventDefault();
                   submit();
@@ -396,7 +397,6 @@ export default function DoctorCarePage() {
                         }}
                         className="rounded-2xl border bg-white px-3 py-2 text-center text-xs font-semibold hover:bg-clinic-50"
                       >
-                        <span className="block text-2xl">{DEPT_PICTURE[dept].icon}</span>
                         {DEPT_PICTURE[dept].label}
                       </button>
                     ))}
@@ -477,6 +477,6 @@ export default function DoctorCarePage() {
           />
         </div>
       )}
-    </div>
+    </DeskPage>
   );
 }

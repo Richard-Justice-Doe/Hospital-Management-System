@@ -14,6 +14,7 @@ import type {
   LabLine,
   MedicationRecord,
   NoteSensitivity,
+  OtCaseRecord,
   PatientRecord,
   ShiftRecord,
   StaffRole,
@@ -125,6 +126,8 @@ export function emptyHis(): HisCollections {
     failedLogins: [],
     shifts: [],
     cashCloses: [],
+    patientDeposits: [],
+    externalReceipts: [],
     budgets: [],
     payroll: [],
     financeAdjustments: [],
@@ -176,6 +179,17 @@ export function hydrateHis(state: CareState): CareState {
     status: asset.status ?? 'IN_USE',
   }));
   next.visits = assignVisitQueueNumbers(next.visits);
+  next.otCases = (next.otCases ?? []).map((row) => ({
+    ...row,
+    durationMin: row.durationMin || 30,
+    consentGiven: Boolean(row.consentGiven),
+    fastingOk: Boolean(row.fastingOk),
+    fitnessOk: Boolean(row.fitnessOk),
+    findings: row.findings ?? '',
+    complications: row.complications ?? '',
+    recoveryNotes: row.recoveryNotes ?? '',
+    asaClass: row.asaClass ?? '',
+  }));
   return next;
 }
 
@@ -309,86 +323,7 @@ export function seedHis(state: Omit<CareState, keyof HisCollections> & Partial<H
         createdBy: 'staff-doctor',
       },
     ],
-    shifts: [
-      {
-        id: 'sh-n1',
-        staffId: 'staff-nurse',
-        department: 'NURSING',
-        day: new Date().toISOString().slice(0, 10),
-        startHour: 7,
-        endHour: 19,
-        createdBy: 'staff-nursing-head',
-        createdAt: ago(40),
-        notifiedAt: ago(40),
-        emailSent: true,
-        smsSent: true,
-      },
-      {
-        id: 'sh-d1',
-        staffId: 'staff-doctor',
-        department: 'CONSULTATION',
-        day: new Date().toISOString().slice(0, 10),
-        startHour: 8,
-        endHour: 16,
-        createdBy: 'staff-consult-head',
-        createdAt: ago(40),
-        notifiedAt: ago(40),
-        emailSent: true,
-        smsSent: true,
-      },
-      {
-        id: 'sh-r1',
-        staffId: 'staff-reception',
-        department: 'RECORDS',
-        day: new Date().toISOString().slice(0, 10),
-        startHour: 7,
-        endHour: 17,
-        createdBy: 'staff-records-head',
-        createdAt: ago(40),
-        notifiedAt: ago(40),
-        emailSent: true,
-        smsSent: true,
-      },
-      {
-        id: 'sh-lab1',
-        staffId: 'staff-lab',
-        department: 'LAB',
-        day: new Date().toISOString().slice(0, 10),
-        startHour: 7,
-        endHour: 16,
-        createdBy: 'staff-lab-head',
-        createdAt: ago(40),
-        notifiedAt: ago(40),
-        emailSent: true,
-        smsSent: true,
-      },
-      {
-        id: 'sh-ph1',
-        staffId: 'staff-pharmacy',
-        department: 'PHARMACY',
-        day: new Date().toISOString().slice(0, 10),
-        startHour: 8,
-        endHour: 20,
-        createdBy: 'staff-pharmacy-head',
-        createdAt: ago(40),
-        notifiedAt: ago(40),
-        emailSent: true,
-        smsSent: true,
-      },
-      {
-        id: 'sh-c1',
-        staffId: 'staff-cashier',
-        department: 'RECORDS',
-        day: new Date().toISOString().slice(0, 10),
-        startHour: 8,
-        endHour: 18,
-        createdBy: 'staff-admin',
-        createdAt: ago(40),
-        notifiedAt: ago(40),
-        emailSent: true,
-        smsSent: true,
-      },
-    ],
+    shifts: demoShiftsForMonth(),
     claims: [
       {
         id: 'clm-amara',
@@ -559,6 +494,30 @@ export function seedHis(state: Omit<CareState, keyof HisCollections> & Partial<H
         at: ago(15),
         login: 'nurse',
         reason: 'Wrong password',
+      },
+    ],
+    otCases: [
+      {
+        id: 'ot-omar',
+        visitId: 'vis-ot',
+        patientId: 'pat-omar',
+        procedure: 'Incision and drainage',
+        startsAt: later(30),
+        durationMin: 30,
+        otBedId: 'bed-ot-1',
+        surgeonStaffId: 'staff-theatre-head',
+        scrubNurseStaffId: 'staff-theatre',
+        consentGiven: false,
+        fastingOk: false,
+        fitnessOk: false,
+        preopDone: false,
+        findings: '',
+        complications: '',
+        surgicalNotes: '',
+        anesthesia: '',
+        asaClass: 'I',
+        recoveryNotes: '',
+        status: 'SCHEDULED' as const,
       },
     ],
     auditLog: [],
@@ -1057,6 +1016,108 @@ export function formatShiftHours(startHour: number, endHour: number): string {
   return `${hourLabel(startHour)}–${hourLabel(endHour)}${overnight}`;
 }
 
+function padMonthPart(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+export function monthIso(date = new Date()): string {
+  return `${date.getFullYear()}-${padMonthPart(date.getMonth() + 1)}`;
+}
+
+export function shiftMonth(month: string, delta: number): string {
+  const [year, monthNo] = month.split('-').map(Number);
+  const next = new Date(year, monthNo - 1 + delta, 1);
+  return `${next.getFullYear()}-${padMonthPart(next.getMonth() + 1)}`;
+}
+
+export function formatMonthLabel(month: string): string {
+  const [year, monthNo] = month.split('-').map(Number);
+  if (!year || !monthNo) return month;
+  return new Date(year, monthNo - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+
+export function daysInMonthIso(month: string, weekdaysOnly = false): string[] {
+  const [year, monthNo] = month.split('-').map(Number);
+  if (!year || !monthNo) return [];
+  const last = new Date(year, monthNo, 0).getDate();
+  const days: string[] = [];
+  for (let day = 1; day <= last; day += 1) {
+    const iso = `${year}-${padMonthPart(monthNo)}-${padMonthPart(day)}`;
+    if (weekdaysOnly) {
+      const weekday = new Date(`${iso}T12:00:00`).getDay();
+      if (weekday === 0 || weekday === 6) continue;
+    }
+    days.push(iso);
+  }
+  return days;
+}
+
+export function shiftsInMonth(shifts: ShiftRecord[] | undefined, month: string, department?: Department): ShiftRecord[] {
+  return (shifts ?? []).filter((shift) => shift.day.startsWith(month) && (!department || shift.department === department));
+}
+
+export interface ShiftMonthBlock {
+  key: string;
+  staffId: string;
+  department: Department;
+  startHour: number;
+  endHour: number;
+  note?: string;
+  days: string[];
+  ids: string[];
+}
+
+export function groupMonthShiftBlocks(shifts: ShiftRecord[]): ShiftMonthBlock[] {
+  const groups = new Map<string, ShiftMonthBlock>();
+  for (const shift of [...shifts].sort((a, b) => a.day.localeCompare(b.day) || a.startHour - b.startHour)) {
+    const key = `${shift.staffId}|${shift.department}|${shift.startHour}|${shift.endHour}|${shift.note ?? ''}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.days.push(shift.day);
+      existing.ids.push(shift.id);
+    } else {
+      groups.set(key, {
+        key,
+        staffId: shift.staffId,
+        department: shift.department,
+        startHour: shift.startHour,
+        endHour: shift.endHour,
+        note: shift.note,
+        days: [shift.day],
+        ids: [shift.id],
+      });
+    }
+  }
+  return [...groups.values()];
+}
+
+export function demoShiftsForMonth(month = monthIso()): ShiftRecord[] {
+  const createdAt = new Date().toISOString();
+  const templates: Array<Pick<ShiftRecord, 'staffId' | 'department' | 'startHour' | 'endHour' | 'createdBy'> & { idPrefix: string }> = [
+    { idPrefix: 'sh-n', staffId: 'staff-nurse', department: 'NURSING', startHour: 7, endHour: 19, createdBy: 'staff-nursing-head' },
+    { idPrefix: 'sh-d', staffId: 'staff-doctor', department: 'CONSULTATION', startHour: 8, endHour: 16, createdBy: 'staff-consult-head' },
+    { idPrefix: 'sh-r', staffId: 'staff-reception', department: 'RECORDS', startHour: 7, endHour: 17, createdBy: 'staff-records-head' },
+    { idPrefix: 'sh-lab', staffId: 'staff-lab', department: 'LAB', startHour: 7, endHour: 16, createdBy: 'staff-lab-head' },
+    { idPrefix: 'sh-ph', staffId: 'staff-pharmacy', department: 'PHARMACY', startHour: 8, endHour: 20, createdBy: 'staff-pharmacy-head' },
+    { idPrefix: 'sh-c', staffId: 'staff-cashier', department: 'RECORDS', startHour: 8, endHour: 18, createdBy: 'staff-admin' },
+  ];
+  return templates.flatMap((row) =>
+    daysInMonthIso(month).map((day) => ({
+      id: `${row.idPrefix}-${day}`,
+      staffId: row.staffId,
+      department: row.department,
+      day,
+      startHour: row.startHour,
+      endHour: row.endHour,
+      createdBy: row.createdBy,
+      createdAt,
+      notifiedAt: createdAt,
+      emailSent: true,
+      smsSent: true,
+    })),
+  );
+}
+
 export function staffForDepartment(state: CareState, department: Department) {
   return state.staff.filter((s) => s.isActive && s.department === department);
 }
@@ -1088,6 +1149,16 @@ export function shiftNoticeText(
 ): string {
   const note = shift.note?.trim() ? ` Note: ${shift.note.trim()}` : '';
   return `Hello ${staff.firstName} ${staff.lastName}, you are scheduled for ${departmentLabel} on ${shift.day} ${formatShiftHours(shift.startHour, shift.endHour)}.${note}`;
+}
+
+export function monthShiftNoticeText(
+  staff: { firstName: string; lastName: string },
+  input: { month: string; startHour: number; endHour: number; note?: string; days: number; weekdaysOnly?: boolean },
+  departmentLabel: string,
+): string {
+  const note = input.note?.trim() ? ` Note: ${input.note.trim()}` : '';
+  const cover = input.weekdaysOnly ? 'weekdays' : 'every day';
+  return `Hello ${staff.firstName} ${staff.lastName}, you are scheduled for ${departmentLabel} throughout ${formatMonthLabel(input.month)} (${cover}, ${input.days} days), ${formatShiftHours(input.startHour, input.endHour)}.${note}`;
 }
 
 export function scheduleShift(
@@ -1126,7 +1197,7 @@ export function scheduleShift(
     createdBy: input.createdBy,
     createdAt: nowIso(),
   };
-  let next: CareState = { ...state, shifts: [shift, ...state.shifts].slice(0, 2000) };
+  let next: CareState = { ...state, shifts: [shift, ...state.shifts].slice(0, 8000) };
   next = notify(next, {
     audience: 'staff',
     staffId: worker.id,
@@ -1141,6 +1212,116 @@ export function scheduleShift(
     reason: `${worker.firstName} ${worker.lastName} ${input.day} ${formatShiftHours(input.startHour, input.endHour)}`,
   });
   return { state: next, shift };
+}
+
+export function scheduleMonthShifts(
+  state: CareState,
+  input: {
+    staffId: string;
+    department: Department;
+    month: string;
+    startHour: number;
+    endHour: number;
+    note?: string;
+    createdBy: string;
+    weekdaysOnly?: boolean;
+  },
+): { state: CareState; error?: string; added: number; skipped: number } {
+  const worker = state.staff.find((s) => s.id === input.staffId && s.isActive);
+  if (!worker) return { state, error: 'Choose an active worker in this department.', added: 0, skipped: 0 };
+  if (worker.department && worker.department !== input.department) {
+    return { state, error: 'That worker belongs to another department.', added: 0, skipped: 0 };
+  }
+  const days = daysInMonthIso(input.month, Boolean(input.weekdaysOnly));
+  if (days.length === 0) return { state, error: 'Pick a month.', added: 0, skipped: 0 };
+
+  const created: ShiftRecord[] = [];
+  let skipped = 0;
+  for (const day of days) {
+    const clash = state.shifts.some(
+      (sh) =>
+        sh.staffId === input.staffId &&
+        sh.day === day &&
+        shiftsOverlap(sh, { startHour: input.startHour, endHour: input.endHour }),
+    ) || created.some((sh) => sh.day === day && shiftsOverlap(sh, { startHour: input.startHour, endHour: input.endHour }));
+    if (clash) {
+      skipped += 1;
+      continue;
+    }
+    created.push({
+      id: newId('sh'),
+      staffId: input.staffId,
+      department: input.department,
+      day,
+      startHour: input.startHour,
+      endHour: input.endHour,
+      note: input.note?.trim() || undefined,
+      createdBy: input.createdBy,
+      createdAt: nowIso(),
+    });
+  }
+  if (created.length === 0) {
+    return { state, error: 'That worker already has this roster for the month.', added: 0, skipped };
+  }
+
+  let next: CareState = { ...state, shifts: [...created, ...state.shifts].slice(0, 8000) };
+  next = notify(next, {
+    audience: 'staff',
+    staffId: worker.id,
+    title: 'Shift scheduled',
+    body: monthShiftNoticeText(
+      worker,
+      {
+        month: input.month,
+        startHour: input.startHour,
+        endHour: input.endHour,
+        note: input.note,
+        days: created.length,
+        weekdaysOnly: input.weekdaysOnly,
+      },
+      DEPARTMENT_LABELS[input.department],
+    ),
+    kind: 'shift',
+  });
+  next = appendAudit(next, {
+    staffId: input.createdBy,
+    action: 'schedule_shift_month',
+    entity: created[0]?.id ?? input.staffId,
+    reason: `${worker.firstName} ${worker.lastName} ${formatMonthLabel(input.month)} ${formatShiftHours(input.startHour, input.endHour)} (${created.length} days)`,
+  });
+  return { state: next, added: created.length, skipped };
+}
+
+export function cancelMonthShiftBlock(
+  state: CareState,
+  input: { staffId: string; department: Department; month: string; startHour: number; endHour: number; cancelledBy: string },
+): CareState {
+  const ids = new Set(
+    shiftsInMonth(state.shifts, input.month, input.department)
+      .filter(
+        (shift) =>
+          shift.staffId === input.staffId &&
+          shift.startHour === input.startHour &&
+          shift.endHour === input.endHour,
+      )
+      .map((shift) => shift.id),
+  );
+  if (ids.size === 0) return state;
+  let next: CareState = { ...state, shifts: state.shifts.filter((shift) => !ids.has(shift.id)) };
+  next = notify(next, {
+    audience: 'staff',
+    staffId: input.staffId,
+    title: 'Shift cancelled',
+    body: `Your ${formatMonthLabel(input.month)} ${formatShiftHours(input.startHour, input.endHour)} roster was cancelled.`,
+    kind: 'shift',
+  });
+  next = appendAudit(next, {
+    staffId: input.cancelledBy,
+    action: 'cancel_shift_month',
+    entity: input.staffId,
+    reason: `${formatMonthLabel(input.month)} ${formatShiftHours(input.startHour, input.endHour)} (${ids.size} days)`,
+  });
+  return next;
 }
 
 export function cancelShift(state: CareState, shiftId: string, staffId: string): CareState {
@@ -1347,32 +1528,78 @@ export function scheduleOt(state: CareState, visitId: string, staffId: string, p
   if (!visit) return state;
   if (state.otCases.some((c) => c.visitId === visitId)) return state;
   const ot = state.beds.find((b) => b.ward === 'OT' && b.status === 'FREE');
-  return {
-    ...state,
-    otCases: [
-      {
-        id: newId('ot'),
-        visitId,
-        patientId: visit.patientId,
-        procedure,
-        startsAt: nowIso(),
-        otBedId: ot?.id ?? 'bed-ot-1',
-        preopDone: false,
-        surgicalNotes: '',
-        anesthesia: '',
-        status: 'SCHEDULED',
-      },
-      ...state.otCases,
-    ],
+  const surgeon = state.staff.find((person) => person.id === staffId && person.role === 'DOCTOR');
+  const caseRow: OtCaseRecord = {
+    id: newId('ot'),
+    visitId,
+    patientId: visit.patientId,
+    procedure,
+    startsAt: nowIso(),
+    durationMin: 30,
+    otBedId: ot?.id ?? 'bed-ot-1',
+    surgeonStaffId: surgeon?.id,
+    consentGiven: false,
+    fastingOk: false,
+    fitnessOk: false,
+    preopDone: false,
+    findings: '',
+    complications: '',
+    surgicalNotes: '',
+    anesthesia: '',
+    asaClass: 'I',
+    recoveryNotes: '',
+    status: 'SCHEDULED',
   };
+  const beds = state.beds.map((bed) =>
+    bed.id === caseRow.otBedId ? { ...bed, status: 'OCCUPIED' as const, patientId: visit.patientId, visitId } : bed,
+  );
+  return appendAudit(
+    { ...state, beds, otCases: [caseRow, ...state.otCases] },
+    { staffId, action: 'ot_schedule', patientId: visit.patientId, entity: procedure },
+  );
 }
 
-export function updateOt(
-  state: CareState,
-  id: string,
-  patch: Partial<Pick<CareState['otCases'][number], 'preopDone' | 'surgicalNotes' | 'anesthesia' | 'status'>>,
-): CareState {
-  return { ...state, otCases: state.otCases.map((c) => (c.id === id ? { ...c, ...patch } : c)) };
+export function updateOt(state: CareState, id: string, patch: Partial<OtCaseRecord>, staffId = 'staff-theatre'): CareState {
+  const current = state.otCases.find((row) => row.id === id);
+  if (!current) return state;
+  const merged: OtCaseRecord = { ...current, ...patch };
+  const preopDone = Boolean(merged.consentGiven && merged.fastingOk && merged.fitnessOk);
+  const nextRow: OtCaseRecord = {
+    ...merged,
+    preopDone,
+    recoveredAt: nextRowRecoveredAt(current, merged),
+  };
+  let beds = state.beds;
+  if (nextRow.status === 'DONE' && current.status !== 'DONE') {
+    beds = beds.map((bed) =>
+      bed.id === nextRow.otBedId ? { ...bed, status: 'CLEANING' as const, patientId: undefined, visitId: undefined } : bed,
+    );
+  } else if (nextRow.status === 'IN_THEATRE') {
+    beds = beds.map((bed) =>
+      bed.id === nextRow.otBedId
+        ? { ...bed, status: 'OCCUPIED' as const, patientId: nextRow.patientId, visitId: nextRow.visitId }
+        : bed,
+    );
+  }
+  const next: CareState = {
+    ...state,
+    beds,
+    otCases: state.otCases.map((row) => (row.id === id ? nextRow : row)),
+  };
+  if (patch.status && patch.status !== current.status) {
+    return appendAudit(next, {
+      staffId,
+      action: `ot_${patch.status.toLowerCase()}`,
+      patientId: current.patientId,
+      entity: current.procedure,
+    });
+  }
+  return next;
+}
+
+function nextRowRecoveredAt(current: OtCaseRecord, merged: OtCaseRecord): string | undefined {
+  if (merged.status === 'RECOVERY' && current.status !== 'RECOVERY') return nowIso();
+  return merged.recoveredAt ?? current.recoveredAt;
 }
 
 export function recordTriage(
@@ -1413,7 +1640,8 @@ export function upsertClaim(
   if (input.status === 'SUBMITTED' && visitMissingRequiredCc(patient, visit)) return state;
   const existing = state.claims.find((c) => c.visitId === input.visitId);
   const amount = visit.orders.filter((o) => o.chargeable !== false).reduce((sum, o) => sum + o.priceGhs, 0);
-  const scheme = existing?.scheme ?? claimSchemeOf(patient);
+  const scheme = existing?.scheme ?? claimSchemeOf(patient, visit);
+  if (!existing && !scheme) return state;
   if (existing) {
     const submitted = input.status === 'SUBMITTED';
     return {

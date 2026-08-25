@@ -7,7 +7,6 @@ import { homeDashboardPage, pagesForPath } from '../workflow/permissions';
 
 export default function PageDashboard({
   page: pageOverride,
-  compact = true,
 }: {
   page?: ReturnType<typeof pagesForPath>[0];
   compact?: boolean;
@@ -28,40 +27,29 @@ export default function PageDashboard({
   );
 
   return (
-    <section className={`rounded-xl border bg-white ${compact ? 'p-4' : 'p-5'}`}>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-clinic-700">Required dashboard</p>
-          <h2 className={compact ? 'text-base font-semibold text-clinic-900' : 'text-lg font-semibold text-clinic-900'}>
-            {snapshot.title}
-          </h2>
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setPeriod('today')}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${period === 'today' ? 'bg-clinic-600 text-white' : 'border bg-white'}`}
-          >
-            Today
-          </button>
-          <button
-            type="button"
-            onClick={() => setPeriod('all')}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${period === 'all' ? 'bg-clinic-600 text-white' : 'border bg-white'}`}
-          >
-            All time
-          </button>
-        </div>
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-slate-200 bg-white px-6 py-2 text-sm">
+      <p className="font-semibold text-clinic-900">{snapshot.title.replace(/ dashboard$/i, '')}</p>
+      {snapshot.cards.map((card) => (
+        <p key={card.key} className="text-slate-600">
+          <span className="font-semibold text-slate-900">{card.value}</span> {card.label.toLowerCase()}
+        </p>
+      ))}
+      <div className="ml-auto flex gap-1">
+        <button
+          type="button"
+          onClick={() => setPeriod('today')}
+          className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${period === 'today' ? 'bg-clinic-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+        >
+          Today
+        </button>
+        <button
+          type="button"
+          onClick={() => setPeriod('all')}
+          className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${period === 'all' ? 'bg-clinic-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+        >
+          All time
+        </button>
       </div>
-      <div className={`mt-4 grid gap-3 ${compact ? 'sm:grid-cols-2 lg:grid-cols-5' : 'sm:grid-cols-2 lg:grid-cols-5'}`}>
-        {snapshot.cards.map((card) => (
-          <article key={card.key} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{card.label}</p>
-            <p className="mt-1 text-2xl font-semibold text-clinic-900">{card.value}</p>
-            <p className="mt-0.5 text-xs text-slate-500">{card.hint}</p>
-          </article>
-        ))}
-      </div>
-    </section>
+    </div>
   );
 }

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { DEPARTMENT_LABELS, formatGhs } from '../workflow/catalog';
 import { unpaidOrders } from '../workflow/billing';
 import type { Department, HospitalService, PatientRecord, VisitRecord } from '../workflow/types';
@@ -34,11 +35,16 @@ export function DepartmentServicesPanel({
   onPrice: (serviceId: string, priceGhs: number) => void;
 }) {
   const items = services.filter((service) => service.department === department);
+  const [open, setOpen] = useState(false);
   if (items.length === 0) return null;
   return (
-    <section className="rounded-xl border bg-white p-5">
-      <h2 className="font-medium text-slate-900">Department services</h2>
-      <ul className="mt-3 divide-y rounded-lg border border-slate-100">
+    <section className="desk-panel">
+      <button type="button" onClick={() => setOpen((value) => !value)} className="flex w-full items-center justify-between px-4 py-2.5 text-left">
+        <span className="text-sm font-medium text-slate-800">Department services</span>
+        <span className="text-xs text-slate-500">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open && (
+        <ul className="divide-y border-t">
         {items.map((service) => (
           <li key={service.id} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5">
             <div>
@@ -74,7 +80,8 @@ export function DepartmentServicesPanel({
             </div>
           </li>
         ))}
-      </ul>
+        </ul>
+      )}
     </section>
   );
 }
@@ -93,10 +100,18 @@ export function DepartmentBillsPanel({
   const scope = department === 'ALL' ? 'ALL' : [department];
   const rows = visits.flatMap((visit) => unpaidOrders(visit, scope).map((order) => ({ visit, order })));
   const label = department === 'ALL' ? 'every department' : DEPARTMENT_LABELS[department].toLowerCase();
+  const [open, setOpen] = useState(false);
   return (
-    <section className="rounded-xl border border-red-100 bg-white p-5">
-      <h2 className="font-medium text-slate-900">Remove bill</h2>
-      <p className="mt-1 text-sm text-slate-500">
+    <section className="desk-panel">
+      <button type="button" onClick={() => setOpen((value) => !value)} className="flex w-full items-center justify-between px-4 py-2.5 text-left">
+        <span className="text-sm font-medium text-slate-800">Remove unpaid bills</span>
+        <span className="text-xs text-slate-500">
+          {rows.length} · {open ? 'Hide' : 'Show'}
+        </span>
+      </button>
+      {open && (
+        <div className="border-t px-4 pb-4 pt-3">
+      <p className="text-sm text-slate-500">
         {department === 'ALL'
           ? 'Admin can take any unpaid charge off a patient.'
           : `Only unpaid ${label} charges can be removed here.`}
@@ -120,6 +135,8 @@ export function DepartmentBillsPanel({
             );
           })}
         </ul>
+      )}
+        </div>
       )}
     </section>
   );

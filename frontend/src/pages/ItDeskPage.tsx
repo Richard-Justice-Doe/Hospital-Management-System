@@ -24,6 +24,7 @@ import type { AssetRecord, ItAssetKind, ItAssetStatus, ItTicketStatus } from '..
 import { ROLE_LABELS } from '../workflow/types';
 import AdminBackupsPage from './admin/AdminBackupsPage';
 import { EmptyState, Field, SearchBox, btnPrimary, btnSecondary, inputClass } from './admin/adminUi';
+import { DeskPage, DeskTabs, PageHeader } from '../components/PageChrome';
 
 const TABS = [
   { id: 'health', label: 'Health' },
@@ -79,29 +80,13 @@ export default function ItDeskPage() {
   }
 
   return (
-    <div className="space-y-4 p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-clinic-900">IT support</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Tickets, devices, lockouts, and the audit trail. Roles and hospital setup stay with Admin.
-        </p>
-      </div>
+    <DeskPage className="space-y-4">
+      <PageHeader
+        title="IT support"
+        hint="Tickets, devices, lockouts, and the audit trail. Roles and hospital setup stay with Admin."
+      />
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {TABS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setTab(item.id)}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold ${
-              tab === item.id ? 'bg-clinic-600 text-white' : 'border bg-white text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            {item.label}
-            {item.id === 'tickets' && stats.open + stats.inProgress > 0 ? ` (${stats.open + stats.inProgress})` : ''}
-          </button>
-        ))}
-      </div>
+      <DeskTabs items={[...TABS]} value={tab} onChange={(id) => setTab(id as TabId)} />
 
       {tab === 'health' && (
         <div className="space-y-4">
@@ -111,7 +96,7 @@ export default function ItDeskPage() {
             <HealthCard label="Locked accounts" value={String(health.lockedAccounts.length)} hint={`${stats.active} active users`} />
             <HealthCard label="Failed sign-ins" value={String(health.failedLogins.length)} hint="This desk, recent attempts" />
           </div>
-          <section className="rounded-xl border bg-white p-5">
+          <section className="desk-panel p-5">
             <h2 className="font-medium text-slate-900">Locked accounts</h2>
             {health.lockedAccounts.length === 0 ? (
               <EmptyState title="Nobody is locked" hint="Use Users to lock an account if someone leaves a desk unlocked." />
@@ -130,7 +115,7 @@ export default function ItDeskPage() {
               </ul>
             )}
           </section>
-          <section className="rounded-xl border bg-white p-5">
+          <section className="desk-panel p-5">
             <h2 className="font-medium text-slate-900">Failed sign-ins</h2>
             {health.failedLogins.length === 0 ? (
               <p className="mt-3 text-sm text-slate-500">No failed sign-ins recorded on this desk.</p>
@@ -160,7 +145,7 @@ export default function ItDeskPage() {
       )}
 
       {tab === 'tickets' && (
-        <section className="rounded-xl border bg-white p-5">
+        <section className="desk-panel p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-medium text-slate-900">Ticket queue</h2>
             <select className={`${inputClass} w-auto`} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as ItTicketStatus | '')}>
@@ -248,7 +233,7 @@ export default function ItDeskPage() {
       {tab === 'assets' && <AssetsPanel />}
 
       {tab === 'users' && (
-        <section className="rounded-xl border bg-white p-5">
+        <section className="desk-panel p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="font-medium text-slate-900">Users</h2>
@@ -324,7 +309,7 @@ export default function ItDeskPage() {
       )}
 
       {tab === 'audit' && (
-        <section className="rounded-xl border bg-white p-5">
+        <section className="desk-panel p-5">
           <h2 className="font-medium text-slate-900">Incident audit</h2>
           <p className="mt-1 text-sm text-slate-500">Read only. IT cannot change clinical notes or bills from this desk.</p>
           {(state.auditLog ?? []).length === 0 ? (
@@ -355,13 +340,13 @@ export default function ItDeskPage() {
           )}
         </section>
       )}
-    </div>
+    </DeskPage>
   );
 }
 
 function HealthCard({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <article className="rounded-xl border bg-white p-4">
+    <article className="desk-panel p-4">
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
       <p className="mt-1 text-lg font-semibold text-clinic-900">{value}</p>
       <p className="mt-1 text-xs text-slate-500">{hint}</p>
@@ -393,7 +378,7 @@ function AssetsPanel() {
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-      <section className="rounded-xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <h2 className="font-medium text-slate-900">Hospital devices and licenses</h2>
         {state.assets.length === 0 ? (
           <div className="mt-4">
@@ -436,7 +421,7 @@ function AssetsPanel() {
           </div>
         )}
       </section>
-      <form onSubmit={save} className="space-y-3 rounded-xl border bg-white p-5">
+      <form onSubmit={save} className="space-y-3 desk-panel p-5">
         <h3 className="font-medium text-slate-900">{form.id ? 'Edit asset' : 'Add asset'}</h3>
         <Field label="Name">
           <input required className={inputClass} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />

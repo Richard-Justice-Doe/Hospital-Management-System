@@ -6,8 +6,8 @@ import { occupancy } from '../../workflow/his';
 import { ROLE_LABELS, type ClinicId, type StaffRole } from '../../workflow/types';
 
 const DOCTOR_ROLES: StaffRole[] = ['DOCTOR', 'EYE_DOCTOR', 'ENT_DOCTOR', 'DENTIST'];
-const IN_BLUE = '#1d4ed8';
-const OUT_BLUE = '#93c5fd';
+const IN_BLUE = '#0369a1';
+const OUT_BLUE = '#7dd3fc';
 
 export default function AdminOverviewPage() {
   const { state } = useCare();
@@ -129,13 +129,13 @@ export default function AdminOverviewPage() {
         <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
           <div className="flex items-center justify-between px-5 py-4">
             <h2 className="text-base font-semibold text-slate-900">Patient records</h2>
-            <Link to="/care/admin/patients" className="text-sm font-medium text-blue-600 hover:underline">
+            <Link to="/care/admin/patients" className="text-sm font-semibold text-clinic-700 hover:underline">
               See all
             </Link>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[28rem] text-left text-sm">
-              <thead className="bg-blue-700 text-white">
+              <thead className="bg-slate-800 text-white">
                 <tr>
                   <th className="px-4 py-2.5 font-medium">Name</th>
                   <th className="px-4 py-2.5 font-medium">Patient ID</th>
@@ -168,14 +168,14 @@ export default function AdminOverviewPage() {
           <h2 className="text-base font-semibold text-slate-900">Appointment schedule</h2>
           <Link
             to="/care/appointments"
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            className="rounded-lg bg-clinic-600 px-4 py-2 text-sm font-semibold text-white hover:bg-clinic-700"
           >
             Create new +
           </Link>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[44rem] text-left text-sm">
-            <thead className="bg-blue-700 text-white">
+            <thead className="bg-slate-800 text-white">
               <tr>
                 <th className="px-4 py-2.5 font-medium">Doctor name</th>
                 <th className="px-4 py-2.5 font-medium">Specialization</th>
@@ -239,7 +239,7 @@ function MetricCard({
 }) {
   return (
     <article className="flex items-center gap-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
-      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-700">
+      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-clinic-50 text-clinic-700">
         <MetricIcon name={icon} />
       </span>
       <div>
@@ -295,7 +295,7 @@ function Avatar({ name }: { name: string }) {
     .map((part) => part[0]?.toUpperCase() ?? '')
     .join('');
   return (
-    <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[11px] font-semibold text-blue-800">
+    <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-clinic-100 text-[11px] font-semibold text-clinic-800">
       {initials || '?'}
     </span>
   );

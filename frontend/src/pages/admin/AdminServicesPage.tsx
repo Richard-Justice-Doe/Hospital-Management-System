@@ -33,7 +33,7 @@ export default function AdminServicesPage() {
   const enabledCount = state.services.filter((service) => service.enabled).length;
 
   return (
-    <section className="rounded-xl border bg-white p-5">
+    <section className="desk-panel p-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="font-medium text-slate-900">Hospital services</h2>

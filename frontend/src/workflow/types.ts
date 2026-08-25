@@ -1,6 +1,18 @@
 export type Gender = 'Female' | 'Male' | 'Other';
 
+export type MaritalStatus = 'Single' | 'Married' | 'Widowed' | 'Divorced' | 'Separated' | 'Not stated';
+
+export type BloodGroup = 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | 'Unknown';
+
+export type RegistrationVisitType = 'NEW' | 'WALK_IN' | 'REFERRAL' | 'EMERGENCY';
+
+export type NhisStatus = 'ACTIVE' | 'EXPIRED' | 'PENDING' | 'NOT_ENROLLED';
+
+export type FolderPaymentMethod = 'CASH' | 'NHIS' | 'MOMO' | 'PRIVATE' | 'CORPORATE';
+
 export type InsuranceType = 'GOVERNMENT' | 'PRIVATE' | 'CASH';
+
+export type PatientSponsor = 'GOVERNMENT' | 'PRIVATE_INSURANCE' | 'CORPORATE' | 'PRIVATE';
 
 export type CopayerRelationship =
   | 'Self'
@@ -134,24 +146,48 @@ export interface StaffAccount {
   salaryGhs?: number;
 }
 
+export interface KinContact {
+  name: string;
+  relationship: CopayerRelationship;
+  phone: string;
+  address?: string;
+}
+
 export interface PatientRecord {
   id: string;
   hospitalNo: string;
   firstName: string;
   lastName: string;
+  otherNames?: string;
   age: number;
+  ageEstimated?: boolean;
   dateOfBirth?: string;
   gender: Gender;
   phone: string;
+  phoneAlt?: string;
   email?: string;
   address?: string;
   town?: string;
+  hometown?: string;
+  maritalStatus?: MaritalStatus;
+  occupation?: string;
+  nextOfKin?: KinContact;
   insuranceType?: InsuranceType;
   insuranceProvider?: string;
   insuranceNumber?: string;
   ghanaCardNo?: string;
   hinNumber?: string;
+  nhisStatus?: NhisStatus;
+  nhisExpires?: string;
+  preferredPayment?: FolderPaymentMethod;
+  guarantorName?: string;
+  guarantorPhone?: string;
+  guarantorAddress?: string;
+  guarantorRelationship?: CopayerRelationship;
   photoUrl?: string;
+  fingerprintCaptured?: boolean;
+  fingerprintUrl?: string;
+  physicalFolderNo?: string;
   createdAt: string;
   folderCreatedAt?: string;
   folderCreatedBy?: string;
@@ -161,6 +197,28 @@ export interface PatientRecord {
   nationalId?: string;
   mergedIntoId?: string;
   preferredLanguage?: string;
+  registrationVisitType?: RegistrationVisitType;
+  referringFacility?: string;
+  registeredClinic?: ClinicId;
+  assignedDoctorStaffId?: string;
+  emergencyContact?: KinContact;
+  knownAllergies?: string;
+  bloodGroup?: BloodGroup;
+  consentTreatment?: boolean;
+  consentDataUse?: boolean;
+  consentSignatureUrl?: string;
+  consentAt?: string;
+  guardianName?: string;
+  guardianRelationship?: CopayerRelationship;
+  guardianPhone?: string;
+  guardianGhanaCard?: string;
+  honorific?: string;
+  religion?: string;
+  educationLevel?: string;
+  district?: string;
+  subDistrict?: string;
+  sponsor?: PatientSponsor;
+  insuranceSerial?: string;
 }
 
 export interface CopayerRecord {
@@ -172,6 +230,11 @@ export interface CopayerRecord {
   phone: string;
   address?: string;
   isPrimary: boolean;
+  insuranceType?: InsuranceType;
+  insuranceProvider?: string;
+  insuranceNumber?: string;
+  ghanaCardNo?: string;
+  hinNumber?: string;
   createdAt: string;
 }
 
@@ -202,6 +265,9 @@ export interface ServiceOrder {
   name: string;
   department: Department;
   priceGhs: number;
+  /** Units on the bill. Missing means 1. priceGhs is the line total. */
+  qty?: number;
+  unitPriceGhs?: number;
   status: OrderStatus;
   result?: string;
   completedAt?: string;
@@ -343,7 +409,10 @@ export interface VisitRecord {
   soapPlan?: string;
   paymentMethod?: PayMethod;
   payLaterReason?: string;
+  /** 5-digit NHIS CC for this visit only. A new code is issued each time the patient comes. */
   nhisCcCode?: string;
+  /** True when NHIS / HIN / Ghana Card is expired and this visit is billed as a private (cash) patient. */
+  coverAsPrivate?: boolean;
   witnessId?: string;
   /** Daily walk-in ticket number, reset each day. */
   queueNo?: number;
@@ -376,6 +445,29 @@ export interface CashCloseRecord {
   systemTotal: number;
   note?: string;
   at: string;
+}
+
+export interface PatientDepositRecord {
+  id: string;
+  patientId: string;
+  amountGhs: number;
+  receivedBy: string;
+  receivedAt: string;
+  receiptNo: string;
+  method: PayMethod;
+  note?: string;
+}
+
+export interface ExternalReceiptRecord {
+  id: string;
+  payerName: string;
+  patientId?: string;
+  amountGhs: number;
+  description: string;
+  receivedBy: string;
+  receivedAt: string;
+  receiptNo: string;
+  method: PayMethod;
 }
 
 export interface HandoverRecord {
@@ -578,17 +670,32 @@ export interface IoEntryRecord {
   staffId: string;
 }
 
+export type OtStatus = 'SCHEDULED' | 'IN_THEATRE' | 'RECOVERY' | 'DONE';
+
 export interface OtCaseRecord {
   id: string;
   visitId: string;
   patientId: string;
   procedure: string;
   startsAt: string;
+  durationMin?: number;
   otBedId: string;
+  surgeonStaffId?: string;
+  assistantStaffId?: string;
+  anaesthetistStaffId?: string;
+  scrubNurseStaffId?: string;
+  consentGiven?: boolean;
+  fastingOk?: boolean;
+  fitnessOk?: boolean;
   preopDone: boolean;
+  findings?: string;
+  complications?: string;
   surgicalNotes: string;
   anesthesia: string;
-  status: 'SCHEDULED' | 'IN_THEATRE' | 'RECOVERY' | 'DONE';
+  asaClass?: string;
+  recoveryNotes?: string;
+  recoveredAt?: string;
+  status: OtStatus;
 }
 
 export interface TriageRecord {
@@ -796,6 +903,8 @@ export interface HisCollections {
   lastSavedAt?: string;
   shifts: ShiftRecord[];
   cashCloses: CashCloseRecord[];
+  patientDeposits: PatientDepositRecord[];
+  externalReceipts: ExternalReceiptRecord[];
   budgets: BudgetRecord[];
   payroll: PayrollRecord[];
   financeAdjustments: FinanceAdjustmentRecord[];

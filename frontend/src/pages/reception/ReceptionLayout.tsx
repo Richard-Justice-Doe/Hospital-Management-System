@@ -1,89 +1,62 @@
-import { NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom';
-import DepartmentShiftPanel from '../../components/DepartmentShiftPanel';
+import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
+import { DeskLayout, DeskPage, FeatureLink, FeatureRail, PageHeader } from '../../components/PageChrome';
 
-const DAILY = [
-  { to: '/care/reception/patients', step: '1', label: 'New folder', hint: 'Search first, then open a folder and print the ID card' },
-  { to: '/care/reception/visit', step: '2', label: 'Check-in & bill', hint: 'Start today’s visit and print a queue ticket' },
-  { to: '/care/reception/visit?mode=bill', step: '3', label: 'Bill later', hint: 'Check in without cash — Accounts collects later' },
-  { to: '/care/reception/visits', step: '4', label: 'Today’s visits', hint: 'Who is in, and which ticket they hold' },
+const ADMIN = [
+  { to: '/care/reception/copayer', label: 'Assign Copayer Patient' },
+  { to: '/care/reception/visit', label: 'Patient Check In' },
+  { to: '/care/reception/patients', label: 'Patient Records' },
 ];
 
-const RECORDS = [
-  { to: '/care/reception/copayer', step: '', label: 'Co-payer', hint: 'Companies and relatives who share the bill' },
-  { to: '/care/reception/merge', step: '', label: 'Fix duplicates', hint: 'Same person, two folders — merge with an audit' },
+const EXTRA = [
+  { to: '/care/reception/visit?mode=bill', label: 'Bill later' },
+  { to: '/care/reception/visits', label: 'Today’s visits' },
+  { to: '/care/reception/merge', label: 'Fix duplicates' },
 ];
 
-function linkActive(to: string, pathname: string, mode: string | null) {
+function tabActive(to: string, pathname: string, mode: string | null) {
   if (to.includes('mode=bill')) return pathname.endsWith('/visit') && mode === 'bill';
   if (to.endsWith('/visit')) return pathname.endsWith('/visit') && mode !== 'bill';
   return pathname.startsWith(to);
-}
-
-function Tile({
-  to,
-  step,
-  label,
-  hint,
-  active,
-}: {
-  to: string;
-  step: string;
-  label: string;
-  hint: string;
-  active: boolean;
-}) {
-  return (
-    <NavLink
-      to={to}
-      className={`rounded-xl border px-4 py-3 text-left ${
-        active ? 'border-clinic-600 bg-clinic-600 text-white' : 'border-slate-200 bg-white text-slate-800 hover:border-clinic-300 hover:bg-clinic-50'
-      }`}
-    >
-      {step ? (
-        <span className={`mb-1 block text-[11px] font-semibold uppercase tracking-wide ${active ? 'text-white/70' : 'text-clinic-600'}`}>
-          Step {step}
-        </span>
-      ) : null}
-      <span className="block text-sm font-semibold">{label}</span>
-      <span className={`mt-1 block text-xs ${active ? 'text-white/80' : 'text-slate-500'}`}>{hint}</span>
-    </NavLink>
-  );
 }
 
 export default function ReceptionLayout() {
   const location = useLocation();
   const [params] = useSearchParams();
   const mode = params.get('mode');
+  const onVisitDesk = location.pathname.endsWith('/visit') || location.pathname.endsWith('/visits');
 
   return (
-    <div className="p-6">
-      <h1 className="text-xl font-semibold text-clinic-900">Reception</h1>
-      <p className="mt-1 text-sm text-slate-600">
-        Folders, check-in, and today’s list. Cash stays with the cashier — Reception bills, Accounts receives.
-      </p>
-      <DepartmentShiftPanel department="RECORDS" />
-
-      <section className="mt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-clinic-700">Daily work</h2>
-        <nav className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          {DAILY.map((link) => (
-            <Tile key={link.to} {...link} active={linkActive(link.to, location.pathname, mode)} />
-          ))}
-        </nav>
-      </section>
-
-      <section className="mt-5">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Records tools</h2>
-        <nav className="mt-3 grid gap-2 sm:grid-cols-2">
-          {RECORDS.map((link) => (
-            <Tile key={link.to} {...link} active={linkActive(link.to, location.pathname, mode)} />
-          ))}
-        </nav>
-      </section>
-
-      <div className="mt-6">
+    <DeskPage>
+      <PageHeader
+        title="Patient Administration"
+        hint={
+          onVisitDesk
+            ? 'Patient check-in starts a visit for an existing folder. Open Patient Records first if they have no folder.'
+            : 'Reception records: assign a copayer, check the patient in, or open a folder from Patient Records.'
+        }
+      />
+      <DeskLayout
+        rail={
+          <>
+            <FeatureRail label="Patient Administration">
+              {ADMIN.map((tab) => (
+                <FeatureLink key={tab.to} to={tab.to} active={tabActive(tab.to, location.pathname, mode)}>
+                  {tab.label}
+                </FeatureLink>
+              ))}
+            </FeatureRail>
+            <FeatureRail label="Visit tools">
+              {EXTRA.map((tab) => (
+                <FeatureLink key={tab.to} to={tab.to} active={tabActive(tab.to, location.pathname, mode)}>
+                  {tab.label}
+                </FeatureLink>
+              ))}
+            </FeatureRail>
+          </>
+        }
+      >
         <Outlet />
-      </div>
-    </div>
+      </DeskLayout>
+    </DeskPage>
   );
 }

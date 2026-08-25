@@ -11,6 +11,7 @@ import {
 } from '../workflow/supportDesks';
 import type { Department } from '../workflow/types';
 import { btnPrimary, btnSecondary, EmptyState, Field, inputClass } from './admin/adminUi';
+import { DeskPage, PageHeader } from '../components/PageChrome';
 
 const ISSUE_DEPTS = (Object.keys(DEPARTMENT_LABELS) as Department[]).filter((dept) => dept !== 'STORES' && dept !== 'PROCUREMENT' && dept !== 'IT');
 
@@ -24,13 +25,13 @@ export default function StoresPage() {
   const openPos = (state.purchaseOrders ?? []).filter((row) => row.status === 'ORDERED');
 
   return (
-    <div className="space-y-4 p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-clinic-900">Central stores</h1>
-        <p className="mt-1 text-sm text-slate-600">Consumables and non-drug stock. Pharmacy keeps medicine on its own desk.</p>
-      </div>
+    <DeskPage className="space-y-4">
+      <PageHeader
+        title="Central stores"
+        hint="Consumables and non-drug stock. Pharmacy keeps medicine on its own desk."
+      />
 
-      <section className="rounded-xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <h2 className="font-medium text-slate-900">Stock</h2>
         {state.supplies.length === 0 ? (
           <div className="mt-3">
@@ -82,7 +83,7 @@ export default function StoresPage() {
 
       <section className="grid gap-4 lg:grid-cols-2">
         <form
-          className="space-y-3 rounded-xl border bg-white p-5"
+          className="space-y-3 desk-panel p-5"
           onSubmit={(e) => {
             e.preventDefault();
             updateCare((next) =>
@@ -125,7 +126,7 @@ export default function StoresPage() {
         </form>
 
         <form
-          className="space-y-3 rounded-xl border bg-white p-5"
+          className="space-y-3 desk-panel p-5"
           onSubmit={(e) => {
             e.preventDefault();
             updateCare((next) => addStoreItem(next, item));
@@ -157,7 +158,7 @@ export default function StoresPage() {
         </form>
       </section>
 
-      <section className="rounded-xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <h2 className="font-medium text-slate-900">Goods received from procurement</h2>
         {openPos.length === 0 ? (
           <p className="mt-2 text-sm text-slate-500">No purchase orders waiting at the store.</p>
@@ -177,7 +178,7 @@ export default function StoresPage() {
         )}
       </section>
 
-      <section className="rounded-xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <h2 className="font-medium text-slate-900">Recent issues</h2>
         <ul className="mt-3 space-y-1 text-sm text-slate-700">
           {(state.storeIssues ?? []).slice(0, 12).map((row) => {
@@ -190,6 +191,6 @@ export default function StoresPage() {
           })}
         </ul>
       </section>
-    </div>
+    </DeskPage>
   );
 }

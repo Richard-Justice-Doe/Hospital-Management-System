@@ -28,9 +28,9 @@ export default function AdminLayout() {
   }
 
   return (
-    <div className="min-h-full bg-[#f5f7fb]">
+    <div>
       <header className="flex flex-wrap items-center gap-4 border-b border-slate-200 bg-white px-6 py-3">
-        <h1 className="text-lg font-semibold text-blue-800">Admin</h1>
+        <h1 className="text-lg font-semibold text-clinic-900">Admin</h1>
         <form onSubmit={search} className="min-w-[16rem] flex-1">
           <label className="relative block">
             <span className="sr-only">Search patient records, appointments, resources</span>
@@ -44,29 +44,15 @@ export default function AdminLayout() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search patient records, appointments, resources, etc."
-              className="w-full rounded-full border border-slate-200 bg-slate-50 py-2 pl-10 pr-4 text-sm outline-none focus:border-blue-500 focus:bg-white"
+              className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-4 text-sm outline-none focus:border-clinic-500 focus:ring-2 focus:ring-clinic-100"
             />
           </label>
         </form>
         {user && (
-          <div className="ml-auto flex items-center gap-3">
-            <span className="hidden h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 sm:flex" aria-hidden>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5" />
-                <path d="M9 17a3 3 0 0 0 6 0" />
-              </svg>
-            </span>
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-800">
-              {user.firstName[0]}
-              {user.lastName[0]}
-            </span>
-            <span className="hidden leading-tight sm:block">
-              <span className="block text-sm font-semibold text-slate-900">
-                {user.firstName} {user.lastName}
-              </span>
-              <span className="text-xs text-slate-500">{ROLE_LABELS[user.role]}</span>
-            </span>
-          </div>
+          <p className="hidden text-sm text-slate-600 sm:block">
+            {user.firstName} {user.lastName}
+            <span className="ml-2 text-xs text-slate-500">{ROLE_LABELS[user.role]}</span>
+          </p>
         )}
       </header>
 
@@ -77,8 +63,8 @@ export default function AdminLayout() {
             to={tab.to}
             end
             className={({ isActive }) =>
-              `whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium ${
-                isActive ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              `whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold ${
+                isActive ? 'bg-clinic-600 text-white' : 'text-slate-600 hover:bg-clinic-50 hover:text-clinic-900'
               }`
             }
           >
@@ -87,7 +73,7 @@ export default function AdminLayout() {
         ))}
       </nav>
 
-      <div className="p-6">
+      <div className="desk-page">
         <Outlet />
       </div>
     </div>

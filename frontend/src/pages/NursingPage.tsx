@@ -14,6 +14,7 @@ import VitalsPad from '../components/VitalsPad';
 import PatientJourneyCard from '../components/PatientJourneyCard';
 import { CallNextButton } from '../components/DeskTools';
 import type { PromptKind } from '../components/ActionPrompt';
+import { DeskPage, PageHeader } from '../components/PageChrome';
 
 const EMPTY = {
   systolicBp: '',
@@ -66,7 +67,7 @@ export default function NursingPage() {
   }
 
   return (
-    <div className="p-6">
+    <DeskPage>
       {prompt && (
         <RecordSavedModal
           kind={prompt.kind}
@@ -76,10 +77,7 @@ export default function NursingPage() {
           onClose={() => setPrompt(null)}
         />
       )}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-clinic-900">Nursing</h1>
-        <CallNextButton />
-      </div>
+      <PageHeader title="Nursing" actions={<CallNextButton />} />
       <DepartmentShiftPanel department="NURSING" />
 
       {isHead && (
@@ -89,7 +87,7 @@ export default function NursingPage() {
       )}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <section className="rounded-xl border bg-white p-5">
+        <section className="desk-panel p-5">
           <h2 className="font-medium">Waiting for vitals ({queue.length})</h2>
           <ul className="mt-3 space-y-2">
             {queue.length === 0 && (
@@ -124,7 +122,7 @@ export default function NursingPage() {
           </ul>
         </section>
 
-        <section className="rounded-xl border bg-white p-5">
+        <section className="desk-panel p-5">
           {!selected || selected.stage !== 'CHECKED_IN' ? (
             <p className="text-sm text-slate-500">Select a patient to record vitals.</p>
           ) : (
@@ -171,7 +169,7 @@ export default function NursingPage() {
           )}
         </section>
 
-        <section className="lg:col-span-2 rounded-xl border bg-white p-5">
+        <section className="lg:col-span-2 desk-panel p-5">
           <h2 className="font-medium">Ready for doctor ({ready.length})</h2>
           {ready.length === 0 && (
             <p className="mt-3 rounded-lg border border-dashed border-slate-200 px-3 py-8 text-center text-sm text-slate-500">
@@ -216,7 +214,7 @@ export default function NursingPage() {
         </section>
       </div>
 
-      <section className="mt-6 rounded-xl border bg-white p-5">
+      <section className="mt-6 desk-panel p-5">
         <h2 className="font-medium">Nursing procedures</h2>
         <ul className="mt-3 space-y-2">
           {ordersForDepartment(state.visits, 'NURSING').length === 0 && (
@@ -265,6 +263,6 @@ export default function NursingPage() {
           />
         </div>
       )}
-    </div>
+    </DeskPage>
   );
 }

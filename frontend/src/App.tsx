@@ -6,7 +6,6 @@ import { DeskProvider } from './context/DeskContext';
 import DepartmentDashboardPage from './pages/DepartmentDashboardPage';
 import AssistantPage from './pages/AssistantPage';
 import ReceptionLayout from './pages/reception/ReceptionLayout';
-import NewPatientPage from './pages/reception/NewPatientPage';
 import NewVisitPage from './pages/reception/NewVisitPage';
 import CopayerPage from './pages/reception/CopayerPage';
 import VisitsPage from './pages/reception/VisitsPage';
@@ -14,6 +13,16 @@ import NursingPage from './pages/NursingPage';
 import DoctorCarePage from './pages/DoctorCarePage';
 import PharmacyPage, { DentalPage, EntPage, EyePage, LabPage, MaternityPage, PhysioPage, XrayPage } from './pages/PharmacyPage';
 import BillingPage from './pages/BillingPage';
+import CashLayout from './pages/cash/CashLayout';
+import {
+  CashBillDetailsPage,
+  CashDepositPage,
+  CashExternalReceiptPage,
+  CashPrintReceiptPage,
+  CashReceiptsByUserPage,
+  CashSalesSummaryPage,
+} from './pages/cash/CashDeskPages';
+import CashPatientRecordsPage from './pages/cash/CashPatientRecordsPage';
 import ClaimsDeskPage from './pages/ClaimsDeskPage';
 import StoresPage from './pages/StoresPage';
 import ProcurementPage from './pages/ProcurementPage';
@@ -91,7 +100,7 @@ export default function App() {
         <Route path="/care/triage" element={gated('triage', <TriagePage />)} />
         <Route path="/care/reception" element={gated('reception', <ReceptionLayout />)}>
           <Route index element={<Navigate to="patients" replace />} />
-          <Route path="patients" element={<NewPatientPage />} />
+          <Route path="patients" element={<CashPatientRecordsPage />} />
           <Route path="visit" element={<NewVisitPage />} />
           <Route path="billing" element={<BillingToVisitRedirect />} />
           <Route path="copayer" element={<CopayerPage />} />
@@ -108,7 +117,19 @@ export default function App() {
         <Route path="/care/ent" element={gated('ent', <EntPage />)} />
         <Route path="/care/dental" element={gated('dental', <DentalPage />)} />
         <Route path="/care/maternity" element={gated('maternity', <MaternityPage />)} />
-        <Route path="/care/billing" element={gated(['billing', 'collections'], <BillingPage />)} />
+        <Route path="/care/billing" element={gated(['billing', 'collections'], <CashLayout />)}>
+          <Route index element={<Navigate to="bill" replace />} />
+          <Route path="bill" element={<BillingPage />} />
+          <Route path="deposit" element={<CashDepositPage />} />
+          <Route path="receipts" element={<CashReceiptsByUserPage />} />
+          <Route path="external" element={<CashExternalReceiptPage />} />
+          <Route path="print" element={<CashPrintReceiptPage />} />
+          <Route path="sales" element={<CashSalesSummaryPage />} />
+          <Route path="details" element={<CashBillDetailsPage />} />
+          <Route path="admin/copayer" element={<CopayerPage />} />
+          <Route path="admin/checkin" element={<NewVisitPage />} />
+          <Route path="admin/records" element={<CashPatientRecordsPage />} />
+        </Route>
         <Route path="/care/claims" element={gated('claims', <ClaimsDeskPage />)} />
         <Route path="/care/stores" element={gated('stores', <StoresPage />)} />
         <Route path="/care/procurement" element={gated('procurement', <ProcurementPage />)} />

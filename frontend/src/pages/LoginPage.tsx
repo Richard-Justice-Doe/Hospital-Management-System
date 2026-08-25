@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { APP_HOME, useAuth } from '../context/AuthContext';
 import PageDateBox from '../components/PageDateBox';
+import HospitalMark from '../components/HospitalMark';
 import { AuthError } from '../lib/api';
 
 const DEPARTMENTS = [
@@ -21,17 +22,6 @@ const DEPARTMENTS = [
   { name: 'Stores / procurement', detail: 'Stock, issues, and purchase orders', photo: '/hospital/hospital-pharmacy.png' },
   { name: 'IT support', detail: 'Tickets, devices, lockouts, and audit', photo: '/hospital/hospital-reception.png' },
 ];
-
-function HospitalMark() {
-  return (
-    <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25">
-      <svg viewBox="0 0 32 32" className="h-7 w-7 text-white" aria-hidden="true">
-        <rect x="13" y="4" width="6" height="24" rx="1.5" fill="currentColor" />
-        <rect x="4" y="13" width="24" height="6" rx="1.5" fill="currentColor" />
-      </svg>
-    </span>
-  );
-}
 
 export default function LoginPage() {
   const { user, login, isLoading } = useAuth();

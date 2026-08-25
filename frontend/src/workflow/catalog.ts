@@ -110,6 +110,9 @@ export const DEFAULT_SERVICES: HospitalService[] = [
 
   item('th-minor', 'Minor theatre procedure', 'THEATRE', 200),
   item('th-circ', 'Circumcision', 'THEATRE', 250, false),
+  item('th-time', 'Theatre time (30 minutes)', 'THEATRE', 80),
+  item('th-consumable', 'Theatre consumables', 'THEATRE', 40),
+  item('th-implant', 'Implant / device', 'THEATRE', 150, false),
 
   item('ward-obs', 'Observation (up to 4 hours)', 'WARD', 50),
   item('ward-bed', 'Ward bed (per day)', 'WARD', 80),
@@ -152,6 +155,38 @@ export const CLINIC_LABELS: Record<ClinicId, string> = {
   PHYSIO: 'Physiotherapy',
   MATERNITY: 'Maternity / ANC',
 };
+
+/** HIS check-in point names (Nagel / BRAINSOFT). */
+export const HIS_CLINIC_LABELS: Record<ClinicId, string> = {
+  GENERAL: 'GENERAL CONSULTATION',
+  REVIEW: 'REVIEW',
+  EMERGENCY: 'EMERGENCY',
+  SPECIALIST: 'SPECIALIST CLINIC',
+  EYE: 'EYE CLINIC',
+  ENT: 'ENT CLINIC',
+  DENTAL: 'DENTAL CLINIC',
+  PHYSIO: 'PHYSIOTHERAPY',
+  MATERNITY: 'MATERNITY',
+};
+
+const SERVICE_HIS_CODES: Record<string, string> = {
+  'reg-folder': 'REG001A',
+  'reg-review': 'REG002A',
+  'opd-general': 'OPDC05A',
+  'opd-review': 'OPDC06A',
+  'opd-specialist': 'OPDC07A',
+  'opd-emergency': 'OPDC08A',
+  'eye-consult': 'EYEC01A',
+  'ent-consult': 'ENTC01A',
+  'den-consult': 'DENC01A',
+  'mat-anc': 'MATC01A',
+  'pt-assess': 'PHYC01A',
+};
+
+export function serviceHisCode(serviceId: string): string {
+  if (SERVICE_HIS_CODES[serviceId]) return SERVICE_HIS_CODES[serviceId];
+  return serviceId.replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 7).padEnd(7, 'X');
+}
 
 export const OPD_CLINICS: ClinicId[] = ['GENERAL', 'REVIEW', 'EMERGENCY', 'SPECIALIST'];
 

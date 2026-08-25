@@ -11,6 +11,7 @@ import { canControlDepartment, type Department } from '../workflow/types';
 import DepartmentShiftPanel from '../components/DepartmentShiftPanel';
 import RecordSavedModal from '../components/RecordSavedModal';
 import type { PromptKind } from '../components/ActionPrompt';
+import { DeskPage, PageHeader } from '../components/PageChrome';
 
 const AFTER_WORK: Record<Department, { kind: PromptKind; detail: string }> = {
   RECORDS: { kind: 'sent_nursing', detail: 'Folder work is finished. Take them to nursing.' },
@@ -46,7 +47,7 @@ export default function DepartmentQueuePage({
   const [prompt, setPrompt] = useState<{ kind: PromptKind; name: string; detail: string } | null>(null);
 
   return (
-    <div className="p-6">
+    <DeskPage>
       {prompt && (
         <RecordSavedModal
           kind={prompt.kind}
@@ -55,7 +56,7 @@ export default function DepartmentQueuePage({
           onClose={() => setPrompt(null)}
         />
       )}
-      <h1 className="text-xl font-semibold text-clinic-900">{title}</h1>
+      <PageHeader title={title} />
       <DepartmentShiftPanel department={department} />
 
       {isHead && (
@@ -69,17 +70,17 @@ export default function DepartmentQueuePage({
         </div>
       )}
 
-      <div className={`${isHead ? 'mt-5' : 'mt-6'} overflow-x-auto rounded-xl border bg-white`}>
+      <div className="mt-5 overflow-x-auto desk-panel">
         {queue.length === 0 ? (
           <p className="p-5 text-sm text-slate-500">No pending work in this department.</p>
         ) : (
-          <table className="w-full border-collapse text-sm">
+          <table className="desk-table">
             <thead>
-              <tr className="bg-slate-50 text-left">
-                <th className="border-b px-4 py-2 font-semibold">Patient</th>
-                <th className="border-b px-4 py-2 font-semibold">Work</th>
-                <th className="border-b px-4 py-2 font-semibold">Status</th>
-                <th className="border-b px-4 py-2 font-semibold">Action</th>
+              <tr>
+                <th>Patient</th>
+                <th>Work</th>
+                <th>Status</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -151,6 +152,6 @@ export default function DepartmentQueuePage({
           />
         </div>
       )}
-    </div>
+    </DeskPage>
   );
 }

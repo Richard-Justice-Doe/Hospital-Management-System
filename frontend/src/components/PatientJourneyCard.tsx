@@ -1,4 +1,4 @@
-import { STAGE_ORDER } from '../workflow/types';
+import { STAGE_LABELS, STAGE_ORDER } from '../workflow/types';
 import { STAGE_PICTURE, patientPlace } from '../workflow/deskUi';
 import { hasGhanaNhiss, insuranceLabel } from '../workflow/patientAdmin';
 import type { PatientRecord, VisitRecord } from '../workflow/types';
@@ -12,12 +12,15 @@ export default function PatientJourneyCard({
 }) {
   if (!patient) return null;
   return (
-    <div className="rounded-2xl border bg-white p-4">
+    <div className="desk-panel p-4">
       <div className="flex items-center gap-3">
         {patient.photoUrl ? (
           <img src={patient.photoUrl} alt="" className="h-16 w-16 rounded-full object-cover" />
         ) : (
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-clinic-100 text-2xl">👤</div>
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-clinic-100 text-sm font-semibold text-clinic-800">
+            {(patient.firstName[0] ?? '').toUpperCase()}
+            {(patient.lastName[0] ?? '').toUpperCase()}
+          </div>
         )}
         <div>
           <p className="text-lg font-bold">
@@ -39,7 +42,7 @@ export default function PatientJourneyCard({
           const on = visit?.stage === stage;
           return (
             <span key={stage} className={`rounded-full px-2 py-1 text-xs font-semibold ${on ? pic.color : 'bg-slate-100 text-slate-400'}`}>
-              {pic.icon} {stage.replace('_', ' ')}
+              {STAGE_LABELS[stage]}
             </span>
           );
         })}

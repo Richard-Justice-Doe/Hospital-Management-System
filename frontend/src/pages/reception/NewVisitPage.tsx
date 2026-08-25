@@ -1,636 +1,428 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import BillItemPad, { type DraftBillLine } from '../../components/BillItemPad';
+import { HisCheckInHeader } from '../../components/HisCheckInHeader';
+import { HisPatientFields } from '../../components/HisPatientFields';
+import RecordSavedModal from '../../components/RecordSavedModal';
+import { isoToDateValue, todayDateValue } from '../../components/PageDateBox';
+import { btnPrimary, btnSecondary, inputClass } from '../admin/adminUi';
 import { useAuth } from '../../context/AuthContext';
 import { useCare } from '../../context/CareContext';
-import PatientIdentity from '../../components/PatientIdentity';
-import RecordSavedModal from '../../components/RecordSavedModal';
-import VisitChargeSummary from '../../components/VisitChargeSummary';
-import { DepartmentBillsPanel } from '../../components/DepartmentControls';
-import { applyVisitBilling, checkInExisting, searchPatients, setVisitCcCode } from '../../workflow/store';
-import PatientJourneyCard from '../../components/PatientJourneyCard';
-import { printQueueTicket } from '../../workflow/printReceipt';
+import { HIS_CLINIC_LABELS, serviceHisCode } from '../../workflow/catalog';
+import {
+  alreadyCheckedInMessage,
+  CC_REQUIRED_HINT,
+  COPAYER_RELATIONSHIPS,
+  expiredCoverAsPrivateMessage,
+  folderDisplayName,
+  formatHisTime,
+  hasGhanaNhiss,
+  insuranceNameShort,
+  lastVisitDate,
+  nhisCoverExpired,
+  patientAgeLabel,
+  visitMissingRequiredCc,
+} from '../../workflow/patientAdmin';
 import { findByHospitalNo } from '../../workflow/patientDb';
-import { CLINIC_LABELS, CLINICS, DEPARTMENT_LABELS, formatGhs, getClinic } from '../../workflow/catalog';
-import { hasGhanaNhiss, insuranceLabel, isCashPrivatePatient, isStaffRelated, stayLabel, staffRelationLabel, visitMissingRequiredCc } from '../../workflow/patientAdmin';
-import { canRemoveBill } from '../../workflow/billing';
-import { canControlDepartment, type ClinicId, type Department, type HospitalService, type PatientRecord, type VisitRecord } from '../../workflow/types';
-
-function ServicePickList({
-  suggested,
-  extrasByDept,
-  selectedServices,
-  onToggle,
-}: {
-  suggested: HospitalService[];
-  extrasByDept: Array<[Department, HospitalService[]]>;
-  selectedServices: string[];
-  onToggle: (id: string) => void;
-}) {
-  const groups: Array<{ label: string; items: HospitalService[] }> = [
-    ...(suggested.length > 0 ? [{ label: 'Usual charges', items: suggested }] : []),
-    ...extrasByDept.map(([dept, items]) => ({ label: DEPARTMENT_LABELS[dept], items })),
-  ];
-  const byId = new Map(groups.flatMap((group) => group.items.map((item) => [item.id, item])));
-  const chosen = selectedServices.map((id) => byId.get(id)).filter((item): item is HospitalService => Boolean(item));
-
-  return (
-    <div className="space-y-3">
-      <label className="block text-sm font-medium text-slate-700">
-        Services
-        <select
-          value=""
-          onChange={(e) => {
-            if (e.target.value && !selectedServices.includes(e.target.value)) onToggle(e.target.value);
-          }}
-          className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm"
-        >
-          <option value="">Choose a service…</option>
-          {groups.map((group) => (
-            <optgroup key={group.label} label={group.label}>
-              {group.items.map((service) => (
-                <option key={service.id} value={service.id}>
-                  {service.name} — {formatGhs(service.priceGhs)}
-                  {selectedServices.includes(service.id) ? ' ✓' : ''}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      </label>
-      {chosen.length > 0 && (
-        <ul className="space-y-1">
-          {chosen.map((service) => (
-            <li key={service.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm">
-              <span>
-                {service.name} <span className="text-slate-500">{formatGhs(service.priceGhs)}</span>
-              </span>
-              <button type="button" onClick={() => onToggle(service.id)} className="text-xs font-semibold text-slate-600 hover:text-red-700">
-                Remove
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-async function copyText(value: string) {
-  try {
-    await navigator.clipboard.writeText(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function pasteText() {
-  try {
-    return (await navigator.clipboard.readText()).trim();
-  } catch {
-    return '';
-  }
-}
-
-function needsBill(visit: VisitRecord) {
-  return visit.stage !== 'COMPLETED' && !visit.billingDecidedAt;
-}
-
-function CcCodeField({
-  value,
-  onChange,
-  onSave,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  onSave?: () => void;
-}) {
-  return (
-    <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-      <label className="block text-sm font-medium text-slate-700">
-        CC code <span className="text-red-600">*</span>
-        <input
-          required
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Required for NHIS / Ghana Card"
-          className="mt-1 w-full rounded-xl border px-3 py-2 font-mono"
-        />
-      </label>
-      <p className="mt-2 text-xs text-emerald-900">Required for every NHIS and Ghana Card patient before check-in or billing.</p>
-      {onSave && value.trim() && (
-        <button type="button" className="mt-2 w-full rounded-lg border bg-white py-2 text-sm font-semibold" onClick={onSave}>
-          Save CC code
-        </button>
-      )}
-    </div>
-  );
-}
+import { appendBillLines, savePatientCheckIn, searchPatients, setVisitCcCode, setVisitCoverAsPrivate, visitOnProcessDate } from '../../workflow/store';
+import type { ClinicId, CopayerRelationship, PatientRecord } from '../../workflow/types';
 
 export default function NewVisitPage() {
   const { user } = useAuth();
-  const { state, updateCare, patientCopayers, removeFromBill } = useCare();
+  const { state, updateCare, patientCopayers } = useCare();
   const staffId = user?.id ?? 'staff-reception';
-  const canRemove = canRemoveBill(user, user?.role === 'ADMIN' ? undefined : 'RECORDS') && canControlDepartment(user, 'RECORDS');
   const [params, setParams] = useSearchParams();
   const billLater = params.get('mode') === 'bill';
-  const [query, setQuery] = useState('');
+  const [processDate, setProcessDate] = useState(todayDateValue);
+  const [folderNo, setFolderNo] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(params.get('patient'));
-  const [reason, setReason] = useState('');
   const [clinic, setClinic] = useState<ClinicId>('GENERAL');
-  const [copayerId, setCopayerId] = useState('');
-  const [message, setMessage] = useState<string | null>(null);
-  const [billable, setBillable] = useState(true);
-  const [selectedServices, setSelectedServices] = useState<string[]>([]);
-  const [saved, setSaved] = useState<{ name: string; visit: VisitRecord; patient: PatientRecord } | null>(null);
-  const [copied, setCopied] = useState<string | null>(null);
   const [ccCode, setCcCode] = useState('');
+  const [paymentType, setPaymentType] = useState<CopayerRelationship>('Self');
+  const [draft, setDraft] = useState<DraftBillLine[]>([]);
+  const [message, setMessage] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [alreadyIn, setAlreadyIn] = useState(false);
+  const [expiredPrompt, setExpiredPrompt] = useState(false);
+  const [asPrivate, setAsPrivate] = useState(false);
+  const saveAfterPrivate = useRef(false);
 
-  const matches = useMemo(() => searchPatients(state.patients, query), [state.patients, query]);
-  const lookup = findByHospitalNo(state.patients, query);
-  const selected = state.patients.find((p) => p.id === selectedId) ?? lookup;
+  const selected = state.patients.find((p) => p.id === selectedId) ?? findByHospitalNo(state.patients, folderNo);
   const visit = state.visits.find((v) => v.patientId === selected?.id && v.stage !== 'COMPLETED');
   const copayers = selected ? patientCopayers(selected.id) : [];
-  const visitClinic = getClinic(visit?.clinic ?? clinic);
-  const relation = selected ? staffRelationLabel(selected, state.staff) : null;
+  const lastVisit = selected ? lastVisitDate(state.visits, selected.id, visit?.id) : '';
+  const folderHits = useMemo(() => {
+    const q = folderNo.trim();
+    if (!q || (selected && q.toLowerCase() === selected.hospitalNo.toLowerCase())) return [];
+    const exact = findByHospitalNo(state.patients, q);
+    const rest = searchPatients(state.patients, q).filter((p) => p.id !== exact?.id);
+    return (exact ? [exact, ...rest] : rest).slice(0, 8);
+  }, [folderNo, selected, state.patients]);
 
-  const suggested = useMemo(() => {
-    if (!selected) return [];
-    const ids = [selected.folderCreatedAt ? 'reg-review' : 'reg-folder', visitClinic.serviceId];
-    return state.services.filter((s) => s.enabled && ids.includes(s.id));
-  }, [selected, state.services, visitClinic.serviceId]);
-
-  const extrasByDept = useMemo(() => {
-    const grouped = new Map<Department, typeof state.services>();
-    for (const service of state.services.filter((s) => s.enabled && !suggested.some((x) => x.id === s.id))) {
-      const list = grouped.get(service.department) ?? [];
-      list.push(service);
-      grouped.set(service.department, list);
-    }
-    return [...grouped.entries()];
-  }, [state.services, suggested]);
-
-  const unbilled = useMemo(
-    () =>
-      state.visits
-        .filter(needsBill)
-        .map((open) => ({ visit: open, patient: state.patients.find((p) => p.id === open.patientId) }))
-        .filter((row) => row.patient),
-    [state.patients, state.visits],
-  );
+  const todayRows = useMemo(() => {
+    return state.visits
+      .filter((item) => isoToDateValue(item.checkedInAt) === processDate)
+      .map((item) => {
+        const person = state.patients.find((p) => p.id === item.patientId);
+        const staff = state.staff.find((s) => s.id === item.checkedInBy);
+        const billed = item.orders.find((order) => order.chargeable !== false && order.department !== 'RECORDS') ?? item.orders[0];
+        return {
+          visit: item,
+          person,
+          name: person ? folderDisplayName(person) : 'UNKNOWN',
+          folder: person?.hospitalNo ?? '',
+          sponsor: item.coverAsPrivate ? 'PRIVATE' : insuranceNameShort(person),
+          clinic: HIS_CLINIC_LABELS[item.clinic] ?? item.clinic,
+          cc: item.nhisCcCode ?? '',
+          code: billed ? serviceHisCode(billed.serviceId) : '',
+          age: person ? patientAgeLabel(person) : '',
+          time: formatHisTime(item.checkedInAt),
+          staff: staff ? `${staff.firstName} ${staff.lastName}`.toUpperCase() : '',
+        };
+      })
+      .sort((a, b) => (b.visit.checkedInAt ?? '').localeCompare(a.visit.checkedInAt ?? ''));
+  }, [processDate, state.patients, state.staff, state.visits]);
 
   useEffect(() => {
     const fromUrl = params.get('patient');
-    if (fromUrl && fromUrl !== selectedId) setSelectedId(fromUrl);
-  }, [params, selectedId]);
-
-  useEffect(() => {
-    if (!selected) return;
-    const related = isStaffRelated(selected);
-    if (visit) {
-      setBillable(visit.billable ?? !related);
-      const alreadyCharged = visit.orders.filter((o) => o.chargeable !== false).map((o) => o.serviceId);
-      setSelectedServices(alreadyCharged.length > 0 ? alreadyCharged : related ? [] : suggested.map((s) => s.id));
-      return;
+    if (!fromUrl) return;
+    const person = state.patients.find((p) => p.id === fromUrl);
+    if (person) {
+      setSelectedId(person.id);
+      setFolderNo(person.hospitalNo);
     }
-    setBillable(!related);
-    setSelectedServices(related ? [] : suggested.map((s) => s.id));
-  }, [selected?.id, visit?.id, suggested]);
+  }, [params, state.patients]);
 
   useEffect(() => {
     if (visit?.nhisCcCode) setCcCode(visit.nhisCcCode);
-  }, [visit?.id, visit?.nhisCcCode]);
+    else setCcCode('');
+  }, [selected?.id, visit?.id, visit?.nhisCcCode]);
 
-  function pickPatient(patientId: string) {
-    setSelectedId(patientId);
+  useEffect(() => {
+    if (!selected) return;
+    if (visit?.clinic) setClinic(visit.clinic);
+    const primary = copayers.find((c) => c.isPrimary);
+    setPaymentType(primary?.relationship ?? 'Self');
+  }, [selected?.id, visit?.id]);
+
+  useEffect(() => {
+    if (!selected || billLater || asPrivate || visit?.coverAsPrivate) return;
+    if (visitOnProcessDate(state.visits, selected.id, processDate)) return;
+    if (nhisCoverExpired(selected)) setExpiredPrompt(true);
+  }, [selected?.id]);
+
+  function pickPatient(patient: PatientRecord, warnIfToday = false) {
+    setSelectedId(patient.id);
+    setFolderNo(patient.hospitalNo);
     const next = new URLSearchParams(params);
-    next.set('patient', patientId);
-    setParams(next);
-    const primary = patientCopayers(patientId).find((c) => c.isPrimary);
-    setCopayerId(primary?.id ?? '');
-    setCcCode('');
+    next.set('patient', patient.id);
+    setParams(next, { replace: true });
+    setDraft([]);
     setMessage(null);
+    setSaved(false);
+    setAsPrivate(false);
+    setExpiredPrompt(false);
+    saveAfterPrivate.current = false;
+    if (!billLater && warnIfToday && visitOnProcessDate(state.visits, patient.id, processDate)) {
+      setAlreadyIn(true);
+    } else {
+      setAlreadyIn(false);
+      if (!billLater && nhisCoverExpired(patient)) setExpiredPrompt(true);
+    }
   }
 
-  function setMode(mode: 'checkin' | 'bill') {
-    const next = new URLSearchParams(params);
-    if (mode === 'bill') next.set('mode', 'bill');
-    else next.delete('mode');
-    setParams(next);
-    setMessage(null);
+  function loadFolder() {
+    if (!folderNo.trim()) return;
+    const found = findByHospitalNo(state.patients, folderNo) ?? searchPatients(state.patients, folderNo)[0];
+    if (!found) {
+      setSelectedId(null);
+      setMessage('No folder matches that number.');
+      return;
+    }
+    pickPatient(found, true);
+    if (billLater && !state.visits.some((v) => v.patientId === found.id && v.stage !== 'COMPLETED')) {
+      setMessage('This folder has no open visit. Use Patient Check In first.');
+    }
   }
 
   function clearDesk() {
     setSelectedId(null);
-    setQuery('');
-    setReason('');
+    setFolderNo('');
     setClinic('GENERAL');
-    setCopayerId('');
-    setMessage(null);
-    setSelectedServices([]);
-    setBillable(true);
     setCcCode('');
-    const next = new URLSearchParams();
-    setParams(next);
+    setPaymentType('Self');
+    setDraft([]);
+    setMessage(null);
+    setSaved(false);
+    setAlreadyIn(false);
+    setExpiredPrompt(false);
+    setAsPrivate(false);
+    saveAfterPrivate.current = false;
+    const next = new URLSearchParams(params);
+    next.delete('patient');
+    setParams(next, { replace: true });
   }
 
-  function toggleService(id: string) {
-    setSelectedServices((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  function copayerForPayment() {
+    if (asPrivate || paymentType === 'Self') return undefined;
+    return copayers.find((c) => c.relationship === paymentType)?.id ?? copayers.find((c) => c.isPrimary)?.id;
   }
 
-  async function handleCopy(folderNo: string) {
-    const ok = await copyText(folderNo);
-    if (ok) {
-      setCopied(folderNo);
-      window.setTimeout(() => setCopied(null), 1600);
-    }
-  }
-
-  async function handlePasteFolder() {
-    const text = await pasteText();
-    if (!text) {
-      setMessage('Paste the folder number into the box, then tap Find.');
-      return;
-    }
-    setQuery(text);
-    const found = findByHospitalNo(state.patients, text);
-    if (found) pickPatient(found.id);
-    else setMessage('No folder matches that number.');
-  }
-
-  function findByFolder() {
-    if (!query.trim()) {
-      setMessage('Type or paste the folder number first.');
-      return;
-    }
-    const found = findByHospitalNo(state.patients, query) ?? searchPatients(state.patients, query)[0];
-    if (!found) {
-      setMessage('No folder matches that number.');
-      return;
-    }
-    pickPatient(found.id);
-    if (!state.visits.some((v) => v.patientId === found.id && v.stage !== 'COMPLETED')) {
-      setMessage('This folder has no open visit. Use Check-in & bill first, or tap Check in below.');
-    }
-  }
-
-  function handleStartVisit(withBill: boolean) {
+  function handleSave(treatPrivate = false) {
     if (!selected) {
-      setMessage('Find the patient first.');
+      setMessage('Enter a folder number first.');
       return;
     }
-    if (!reason.trim()) {
-      setMessage('Enter why they came today.');
+    const asPrivateVisit = treatPrivate || asPrivate || Boolean(visit?.coverAsPrivate);
+    if (!billLater && visitOnProcessDate(state.visits, selected.id, processDate)) {
+      setAlreadyIn(true);
       return;
     }
-    if (visitMissingRequiredCc(selected, visit, ccCode)) {
-      setMessage('Enter the CC code. It is required for every NHIS and Ghana Card patient.');
+    if (nhisCoverExpired(selected) && !asPrivateVisit) {
+      saveAfterPrivate.current = true;
+      setExpiredPrompt(true);
       return;
     }
-    const active = state.visits.find((v) => v.patientId === selected.id && v.stage !== 'COMPLETED');
-    const folderOnly =
-      active &&
-      (active.reason === 'New patient folder' ||
-        active.reason === 'Open patient folder' ||
-        (active.stage === 'READY_TO_BILL' &&
-          active.orders.length > 0 &&
-          active.orders.every((o) => o.department === 'RECORDS')));
-    if (active && !folderOnly) {
-      setMessage('This patient already has an open visit. Use the billing side.');
+    if (billLater) {
+      if (!visit) {
+        setMessage('This folder has no open visit. Use Patient Check In first.');
+        return;
+      }
+      if (!asPrivateVisit && visitMissingRequiredCc(selected, visit, ccCode)) {
+        setMessage(CC_REQUIRED_HINT);
+        return;
+      }
+      if (draft.length > 0 || ccCode.trim() || asPrivateVisit) {
+        updateCare((current) => {
+          const tagged = asPrivateVisit ? setVisitCoverAsPrivate(current, visit.id) : current;
+          const withCc = !asPrivateVisit && ccCode.trim() ? setVisitCcCode(tagged, visit.id, ccCode) : tagged;
+          return draft.length > 0
+            ? appendBillLines(
+                withCc,
+                visit.id,
+                draft.map((line) => ({ serviceId: line.serviceId, qty: line.qty })),
+              )
+            : withCc;
+        });
+      }
+      setDraft([]);
+      setSaved(true);
+      setMessage(null);
       return;
     }
-    let opened: VisitRecord | undefined;
-    updateCare((current) => {
-      let after = checkInExisting(current, selected.id, reason, staffId, clinic, copayerId || undefined, ccCode);
-      const open = after.visits.find((v) => v.patientId === selected.id && v.stage !== 'COMPLETED');
-      opened = open;
-      if (open && ccCode.trim()) after = setVisitCcCode(after, open.id, ccCode);
-      if (!withBill) return after;
-      if (!open) return after;
-      return applyVisitBilling(after, open.id, {
-        billable,
-        serviceIds: billable ? selectedServices : [],
-        waivedReason: billable ? undefined : relation ? `Related to worker: ${relation}` : 'Not billed',
+    if (!asPrivateVisit && visitMissingRequiredCc(selected, visit, ccCode)) {
+      setMessage(CC_REQUIRED_HINT);
+      return;
+    }
+    updateCare((current) =>
+      savePatientCheckIn(current, {
+        patientId: selected.id,
         staffId,
-      });
-    });
-    setReason('');
-    if (opened) setSaved({ name: `${selected.firstName} ${selected.lastName}`, visit: opened, patient: selected });
-    if (withBill) clearDesk();
+        clinic,
+        copayerId: copayerForPayment(),
+        nhisCcCode: asPrivateVisit ? undefined : ccCode,
+        onDate: processDate,
+        coverAsPrivate: asPrivateVisit,
+        lines: draft.map((line) => ({ serviceId: line.serviceId, qty: line.qty })),
+      }),
+    );
+    setDraft([]);
+    setSaved(true);
+    setMessage(null);
   }
 
-  function handleSaveBill() {
-    if (!visit || !selected) return;
-    if (visitMissingRequiredCc(selected, visit, ccCode)) {
-      setMessage('Enter the CC code. It is required for every NHIS and Ghana Card patient.');
-      return;
+  function acknowledgeExpired() {
+    setAsPrivate(true);
+    setExpiredPrompt(false);
+    setPaymentType('Self');
+    if (saveAfterPrivate.current) {
+      saveAfterPrivate.current = false;
+      handleSave(true);
     }
-    updateCare((current) => {
-      const after = ccCode.trim() ? setVisitCcCode(current, visit.id, ccCode) : current;
-      return applyVisitBilling(after, visit.id, {
-        billable,
-        serviceIds: billable ? selectedServices : [],
-        waivedReason: billable ? undefined : relation ? `Related to worker: ${relation}` : 'Not billed',
-        staffId,
-      });
-    });
-    setSaved({ name: `${selected.firstName} ${selected.lastName}`, visit, patient: selected });
-    clearDesk();
   }
+
+  const field = `${inputClass} mt-0`;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {saved && (
         <RecordSavedModal
-          kind="checked_in"
-          patientName={saved.name}
-          detail={
-            saved.visit.queueNo
-              ? `Queue ticket ${saved.visit.queueNo}. Send them to Nursing with the printed ticket.`
-              : 'Visit is open. Print a queue ticket for Nursing.'
-          }
-          nextLabel="Print queue ticket"
-          onNext={() => printQueueTicket(saved.patient, saved.visit)}
-          onClose={() => setSaved(null)}
+          kind="record_saved"
+          detail="This person has been sent to Cash and Nursing."
+          onClose={() => {
+            setSaved(false);
+            clearDesk();
+          }}
         />
       )}
-      {canRemove && (
-        <DepartmentBillsPanel department={user?.role === 'ADMIN' ? 'ALL' : 'RECORDS'} visits={state.visits} patients={state.patients} onRemove={removeFromBill} />
+      {alreadyIn && selected && (
+        <RecordSavedModal kind="already_checked_in" detail={alreadyCheckedInMessage(selected)} onClose={() => setAlreadyIn(false)} />
+      )}
+      {expiredPrompt && selected && (
+        <RecordSavedModal kind="expired_cover" detail={expiredCoverAsPrivateMessage(selected)} onClose={acknowledgeExpired} />
       )}
 
-      <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
-        <button
-          type="button"
-          onClick={() => setMode('checkin')}
-          className={`rounded-xl px-4 py-3 text-sm font-semibold ${!billLater ? 'bg-white text-clinic-800 shadow' : 'text-slate-600'}`}
-        >
-          🚪 Check in
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode('bill')}
-          className={`rounded-xl px-4 py-3 text-sm font-semibold ${billLater ? 'bg-white text-clinic-800 shadow' : 'text-slate-600'}`}
-        >
-          🧾 Bill later
-        </button>
-      </div>
+      <section className="desk-panel p-4">
+        <h2 className="text-base font-semibold uppercase tracking-wide text-slate-800">Patient Check In</h2>
 
-      {message && <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">{message}</p>}
-
-      {billLater ? (
-        <section className="rounded-2xl border-2 border-amber-200 bg-white p-5">
-          <h3 className="text-lg font-semibold text-slate-900">Forgot to bill?</h3>
-          <p className="mt-1 text-sm text-slate-600">Paste or type the folder number, then add the same services on the billing side.</p>
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-            <input
-              placeholder="Folder number, e.g. A1/2026"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="w-full rounded-xl border px-4 py-3 font-mono text-base"
-            />
-            <button type="button" onClick={() => void handlePasteFolder()} className="rounded-xl border px-4 py-3 text-sm font-semibold hover:bg-slate-50">
-              Paste
-            </button>
-            <button type="button" onClick={findByFolder} className="rounded-xl bg-clinic-600 px-5 py-3 text-sm font-semibold text-white hover:bg-clinic-700">
-              Find
-            </button>
-          </div>
-          {unbilled.length > 0 && (
-            <div className="mt-5">
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Open visits not billed yet</p>
-              <ul className="mt-2 grid gap-2 sm:grid-cols-2">
-                {unbilled.map(({ visit: open, patient }) => (
-                  <li key={open.id} className="rounded-xl border p-3">
-                    <PatientIdentity patient={patient} extra={` · ${CLINIC_LABELS[open.clinic ?? 'GENERAL']}`} />
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void handleCopy(patient!.hospitalNo)}
-                        className="rounded-lg border px-3 py-2 text-xs font-semibold"
-                      >
-                        {copied === patient!.hospitalNo ? 'Copied' : 'Copy folder'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setQuery(patient!.hospitalNo);
-                          pickPatient(patient!.id);
-                        }}
-                        className="rounded-lg bg-clinic-600 px-3 py-2 text-xs font-semibold text-white"
-                      >
-                        Bill this visit
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </section>
-      ) : (
-        <section className="rounded-2xl border bg-white p-5">
-          <h3 className="text-lg font-semibold">Find patient</h3>
-          <input
-            placeholder="Folder number, name, or phone"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="mt-3 w-full rounded-xl border px-4 py-3 font-mono text-base"
+        <div className="mt-4">
+          <HisCheckInHeader
+            processDate={processDate}
+            onProcessDateChange={setProcessDate}
+            clinic={clinic}
+            onClinicChange={setClinic}
+            ccCode={ccCode}
+            onCcCodeChange={setCcCode}
+            onMessage={setMessage}
+            ccRequired={hasGhanaNhiss(selected) && !asPrivate}
           />
-          <ul className="mt-3 max-h-48 space-y-1 overflow-auto">
-            {(lookup ? [lookup, ...matches.filter((p) => p.id !== lookup.id)] : matches).slice(0, 8).map((p) => (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  onClick={() => pickPatient(p.id)}
-                  className={`w-full rounded-xl border px-3 py-3 text-left text-sm ${selected?.id === p.id ? 'border-clinic-500 bg-clinic-50' : 'border-slate-100 hover:bg-slate-50'}`}
-                >
-                  <PatientIdentity patient={p} extra={` · ${p.age}y`} />
-                  {isStaffRelated(p) && <span className="mt-1 block text-xs text-amber-800">Worker / relative</span>}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+        </div>
 
-      <div className={`grid gap-4 ${billLater ? '' : 'lg:grid-cols-2'}`}>
-        {!billLater && (
-          <section className="rounded-2xl border-2 border-sky-200 bg-white p-5">
-            <h3 className="text-lg font-semibold text-sky-900">Check in</h3>
-            {selected ? (
-              <>
-                <div className="mt-3">
-                  <PatientJourneyCard patient={selected} visit={visit} />
-                </div>
-                <div className="mt-3 rounded-xl bg-sky-50 px-3 py-3 text-sm">
-                  <PatientIdentity patient={selected} extra={` · ${selected.age}y ${selected.gender}`} />
-                  <p className="mt-1 text-xs text-slate-500">
-                    DOB {selected.dateOfBirth ? new Date(selected.dateOfBirth).toLocaleDateString() : '—'} · {selected.phone}
-                  </p>
-                  <p className="text-xs text-slate-500">Stays: {stayLabel(selected)}</p>
-                  <p className="text-xs text-slate-500">{insuranceLabel(selected)}</p>
-                  {isStaffRelated(selected) && (
-                    <p className="mt-1 text-xs font-medium text-amber-800">{staffRelationLabel(selected, state.staff)}</p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => void handleCopy(selected.hospitalNo)}
-                    className="mt-2 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold"
-                  >
-                    {copied === selected.hospitalNo ? 'Copied' : `Copy folder ${selected.hospitalNo}`}
-                  </button>
-                </div>
-                {visit && (
-                  <p className="mt-3 rounded-lg bg-clinic-50 px-3 py-2 text-sm text-clinic-800">
-                    Open visit: {CLINIC_LABELS[visit.clinic]} · {visit.reason}
-                  </p>
-                )}
-                {hasGhanaNhiss(selected) && (
-                  <CcCodeField
-                    value={ccCode || visit?.nhisCcCode || ''}
-                    onChange={setCcCode}
-                    onSave={visit ? () => updateCare((current) => setVisitCcCode(current, visit.id, ccCode)) : undefined}
-                  />
-                )}
-                {isCashPrivatePatient(selected) && !isStaffRelated(selected) && (
-                  <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                    Private patient. If you bill them, they pay cash at Accounts.
-                  </p>
-                )}
-                <label className="mt-3 block text-sm font-medium text-slate-700">Department / clinic</label>
-                <select value={clinic} onChange={(e) => setClinic(e.target.value as ClinicId)} className="mt-1 w-full rounded-xl border px-3 py-2 text-sm">
-                  {CLINICS.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  placeholder="Reason for this visit"
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  className="mt-3 w-full rounded-xl border px-3 py-2 text-sm"
-                />
-                <label className="mt-3 block text-sm font-medium text-slate-700">Co-payer for this visit</label>
-                <select value={copayerId} onChange={(e) => setCopayerId(e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2 text-sm">
-                  <option value="">Patient pays</option>
-                  {copayers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.firstName} {c.lastName} ({c.relationship})
-                    </option>
-                  ))}
-                </select>
-                <div className="mt-4">
-                  <ServicePickList
-                    suggested={suggested}
-                    extrasByDept={extrasByDept}
-                    selectedServices={selectedServices}
-                    onToggle={toggleService}
-                  />
-                </div>
-                <div className="mt-4 grid gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleStartVisit(true)}
-                    className="w-full rounded-xl bg-clinic-600 py-3 text-sm font-semibold text-white hover:bg-clinic-700"
-                  >
-                    Check in and bill
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleStartVisit(false)}
-                    className="w-full rounded-xl border-2 border-sky-300 py-3 text-sm font-semibold text-sky-800 hover:bg-sky-50"
-                  >
-                    Check in only
-                  </button>
-                  {visit && (
-                    <button
-                      type="button"
-                      onClick={() => printQueueTicket(selected, visit)}
-                      className="w-full rounded-xl border py-3 text-sm font-semibold"
-                    >
-                      Print queue ticket{visit.queueNo ? ` #${visit.queueNo}` : ''}
-                    </button>
-                  )}
-                </div>
-              </>
-            ) : (
-              <p className="mt-3 text-sm text-slate-500">Select a patient on the left first.</p>
-            )}
-          </section>
-        )}
-
-        <section className="rounded-2xl border-2 border-amber-200 bg-white p-5">
-          <h3 className="text-lg font-semibold text-amber-900">Billing</h3>
-          {!selected && <p className="mt-3 text-sm text-slate-500">Find a patient, or paste a folder number on Bill later.</p>}
-          {selected && !visit && (
-            <p className="mt-3 text-sm text-slate-500">No open visit. Check them in first, or use Check in and bill.</p>
-          )}
-          {selected && visit && (
-            <>
-              <div className="mt-3 rounded-xl bg-amber-50 px-3 py-3 text-sm">
-                <PatientIdentity patient={selected} />
-                <p className="mt-1 text-xs text-slate-600">
-                  {CLINIC_LABELS[visit.clinic ?? 'GENERAL']} · {visit.reason}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => void handleCopy(selected.hospitalNo)}
-                  className="mt-2 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold"
-                >
-                  {copied === selected.hospitalNo ? 'Copied' : `Copy folder ${selected.hospitalNo}`}
-                </button>
-              </div>
-              {hasGhanaNhiss(selected) && (
-                <CcCodeField
-                  value={ccCode || visit.nhisCcCode || ''}
-                  onChange={setCcCode}
-                  onSave={() => updateCare((current) => setVisitCcCode(current, visit.id, ccCode))}
-                />
-              )}
-              {relation && (
-                <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  Related to a worker: {relation}. You may choose not to bill.
-                </p>
-              )}
-              <fieldset className="mt-4 space-y-2">
-                <legend className="text-sm font-medium text-slate-700">Bill this visit?</legend>
-                <label className="flex items-start gap-2 text-sm">
-                  <input type="radio" name="billable" checked={billable} onChange={() => setBillable(true)} className="mt-1" />
-                  <span>Yes — add charges below</span>
-                </label>
-                <label className="flex items-start gap-2 text-sm">
-                  <input type="radio" name="billable" checked={!billable} onChange={() => setBillable(false)} className="mt-1" />
-                  <span>No — do not bill (worker or worker’s relative)</span>
-                </label>
-              </fieldset>
-              {billable && (
-                <div className="mt-4">
-                  <ServicePickList
-                    suggested={suggested}
-                    extrasByDept={extrasByDept}
-                    selectedServices={selectedServices}
-                    onToggle={toggleService}
-                  />
-                </div>
-              )}
-              <VisitChargeSummary
-                visit={visit}
-                showResults
-                managedDepartment={user?.role === 'ADMIN' ? undefined : 'RECORDS'}
-                onRemoveCharge={canRemove ? (orderId) => removeFromBill(visit.id, orderId) : undefined}
+        <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(18rem,22rem)_1fr]">
+          <HisPatientFields
+            patient={selected}
+            lastVisit={lastVisit}
+            folderInput={
+              <input
+                value={folderNo}
+                onChange={(e) => {
+                  setFolderNo(e.target.value);
+                  if (selected) setSelectedId(null);
+                }}
+                onBlur={loadFolder}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    loadFolder();
+                  }
+                }}
+                placeholder="A1/2026"
+                className={field}
+                aria-label="Folder No"
               />
-              <button
-                type="button"
-                onClick={handleSaveBill}
-                className="mt-4 w-full rounded-xl bg-amber-600 py-3 text-sm font-semibold text-white hover:bg-amber-700"
-              >
-                {billable ? 'Save bill' : 'Save as not billed'}
-              </button>
-            </>
-          )}
-        </section>
-      </div>
+            }
+            folderHits={
+              folderHits.length > 0 ? (
+                <ul className="max-h-36 divide-y overflow-auto rounded-lg border">
+                  {folderHits.map((person) => (
+                    <li key={person.id}>
+                      <button type="button" className="flex w-full justify-between px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={() => pickPatient(person)}>
+                        <span>{folderDisplayName(person)}</span>
+                        <span className="font-mono text-xs text-clinic-800">{person.hospitalNo}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null
+            }
+          />
+
+          <BillItemPad
+            services={state.services}
+            enabled={Boolean(selected)}
+            draft={draft}
+            savedLines={visit?.orders}
+            onDraftChange={setDraft}
+            leftOfTotal={
+              <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
+                <span className="shrink-0">Payment Type:</span>
+                <select
+                  value={paymentType}
+                  onChange={(e) => setPaymentType(e.target.value as CopayerRelationship)}
+                  className={`${inputClass} max-w-xs`}
+                  aria-label="Payment Type"
+                >
+                  {COPAYER_RELATIONSHIPS.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            }
+          />
+        </div>
+
+        {message && <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">{message}</p>}
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" onClick={() => handleSave()} className={btnPrimary}>
+            Save
+          </button>
+          <button type="button" onClick={clearDesk} className={btnSecondary}>
+            Close
+          </button>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-xl border border-slate-700">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[64rem] border-collapse text-sm">
+            <thead>
+              <tr className="bg-slate-700 text-left text-white">
+                <th className="px-3 py-2 font-semibold">Date</th>
+                <th className="px-3 py-2 font-semibold">Name</th>
+                <th className="px-3 py-2 font-semibold">Folder No</th>
+                <th className="px-3 py-2 font-semibold">Sponsor</th>
+                <th className="px-3 py-2 font-semibold">Clinic</th>
+                <th className="px-3 py-2 font-semibold">CC</th>
+                <th className="px-3 py-2 font-semibold">Code</th>
+                <th className="px-3 py-2 font-semibold">Age</th>
+                <th className="px-3 py-2 font-semibold">Time</th>
+                <th className="px-3 py-2 font-semibold">Staff</th>
+              </tr>
+            </thead>
+            <tbody>
+              {todayRows.length === 0 ? (
+                <tr className="bg-slate-800">
+                  <td colSpan={10} className="px-3 py-8 text-center text-slate-300">
+                    No check-ins on this date.
+                  </td>
+                </tr>
+              ) : (
+                todayRows.map((row, index) => {
+                  const active = Boolean(visit && row.visit.id === visit.id);
+                  return (
+                    <tr
+                      key={row.visit.id}
+                      className={
+                        active
+                          ? 'bg-slate-800 text-white'
+                          : index % 2 === 0
+                            ? 'bg-slate-600 text-white'
+                            : 'bg-slate-700 text-white'
+                      }
+                    >
+                      <td className="px-3 py-2 font-semibold text-red-400">{isoToDateValue(row.visit.checkedInAt)}</td>
+                      <td className="px-3 py-2">
+                        <button type="button" className="text-left font-medium hover:underline" onClick={() => row.person && pickPatient(row.person)}>
+                          {row.name}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs">{row.folder}</td>
+                      <td className="px-3 py-2">{row.sponsor}</td>
+                      <td className="px-3 py-2">{row.clinic}</td>
+                      <td className="px-3 py-2 font-mono">{row.cc}</td>
+                      <td className="px-3 py-2 font-mono">{row.code}</td>
+                      <td className="px-3 py-2">{row.age}</td>
+                      <td className="px-3 py-2">{row.time}</td>
+                      <td className="px-3 py-2">{row.staff}</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+        {billLater && (
+          <p className="border-t px-3 py-2 text-xs text-slate-500">
+            Bill later uses this same desk. Find the folder, add items, then Save.{' '}
+            <Link to="/care/reception/patients" className="font-medium text-clinic-700 hover:underline">
+              Patient Records
+            </Link>
+          </p>
+        )}
+      </section>
     </div>
   );
 }

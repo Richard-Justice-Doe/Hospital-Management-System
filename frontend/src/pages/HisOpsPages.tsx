@@ -26,31 +26,25 @@ import {
   sendMessage,
   setAppointmentStatus,
   transferBed,
-  updateOt,
 } from '../workflow/his';
 import type { AppointmentStatus, ClinicId, StaffRole } from '../workflow/types';
 import { canControlDepartment } from '../workflow/types';
 import { btnPrimary, btnSecondary, inputClass } from './admin/adminUi';
 import { DepartmentBillsPanel, DepartmentServicesPanel } from '../components/DepartmentControls';
 import DepartmentShiftPanel from '../components/DepartmentShiftPanel';
+import { DeskPage, DeskPanel, PageHeader } from '../components/PageChrome';
 
 function Shell({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
   return (
-    <div className="p-6">
-      <h1 className="text-xl font-semibold text-clinic-900">{title}</h1>
-      <p className="mt-1 text-sm text-slate-600">{hint}</p>
-      <div className="mt-6 space-y-4">{children}</div>
-    </div>
+    <DeskPage>
+      <PageHeader title={title} hint={hint} />
+      <div className="mt-5 space-y-4">{children}</div>
+    </DeskPage>
   );
 }
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="rounded-xl border bg-white p-5">
-      <h2 className="font-medium">{title}</h2>
-      <div className="mt-3">{children}</div>
-    </section>
-  );
+  return <DeskPanel title={title}>{children}</DeskPanel>;
 }
 
 export function AppointmentsPage() {
@@ -372,73 +366,7 @@ function IoForm() {
   );
 }
 
-export function TheatrePage() {
-  const { user } = useAuth();
-  const { state, updateCare, removeFromBill, toggleService, updatePrice } = useCare();
-  const isHead = canControlDepartment(user, 'THEATRE');
-  const [prompt, setPrompt] = useState<{ kind: PromptKind; name: string; detail: string } | null>(null);
-  return (
-    <Shell title="Theatre / OT" hint="OT board, pre-op checklist, surgical notes, anaesthesia.">
-      {prompt && (
-        <RecordSavedModal kind={prompt.kind} patientName={prompt.name} detail={prompt.detail} onClose={() => setPrompt(null)} />
-      )}
-      <DepartmentShiftPanel department="THEATRE" />
-      {isHead && (
-        <DepartmentBillsPanel department="THEATRE" visits={state.visits} patients={state.patients} onRemove={removeFromBill} />
-      )}
-      {state.otCases.length === 0 && <p className="text-sm text-slate-500">No OT cases. Order a theatre service on a consult to schedule.</p>}
-      {state.otCases.map((c) => {
-        const p = state.patients.find((x) => x.id === c.patientId);
-        return (
-          <Card key={c.id} title={`${c.procedure} · ${c.status}`}>
-            <PatientIdentity patient={p} />
-            <label className="mt-3 flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={c.preopDone} onChange={(e) => updateCare((s) => updateOt(s, c.id, { preopDone: e.target.checked }))} />
-              Pre-op checklist complete
-            </label>
-            <textarea className={`${inputClass} mt-2`} value={c.surgicalNotes} placeholder="Surgical notes" onChange={(e) => updateCare((s) => updateOt(s, c.id, { surgicalNotes: e.target.value }))} />
-            <input className={`${inputClass} mt-2`} value={c.anesthesia} placeholder="Anaesthesia" onChange={(e) => updateCare((s) => updateOt(s, c.id, { anesthesia: e.target.value }))} />
-            <div className="mt-2 space-x-2">
-              {(['IN_THEATRE', 'RECOVERY', 'DONE'] as const).map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  className={btnSecondary}
-                  onClick={() => {
-                    updateCare((s) => updateOt(s, c.id, { status }));
-                    const name = p ? `${p.firstName} ${p.lastName}` : 'Patient';
-                    if (status === 'IN_THEATRE') {
-                      setPrompt({ kind: 'sent_theatre', name, detail: 'Take the patient into theatre now.' });
-                    } else if (status === 'RECOVERY') {
-                      setPrompt({ kind: 'work_done', name, detail: 'Surgery is finished. Take them to recovery.' });
-                    } else {
-                      setPrompt({ kind: 'sent_ward', name, detail: 'Theatre is done. Take them back to the ward.' });
-                    }
-                  }}
-                >
-                  {status}
-                </button>
-              ))}
-            </div>
-            {isHead && (() => {
-              const visit = state.visits.find((v) => v.id === c.visitId);
-              return visit ? (
-                <VisitChargeSummary
-                  visit={visit}
-                  managedDepartment="THEATRE"
-                  onRemoveCharge={(orderId) => removeFromBill(visit.id, orderId)}
-                />
-              ) : null;
-            })()}
-          </Card>
-        );
-      })}
-      {isHead && (
-        <DepartmentServicesPanel department="THEATRE" services={state.services} onToggle={toggleService} onPrice={updatePrice} />
-      )}
-    </Shell>
-  );
-}
+export { default as TheatrePage } from './TheatrePage';
 
 export function TriagePage() {
   const { user } = useAuth();

@@ -9,7 +9,7 @@ describe('accountant claims Excel', () => {
     const pack = accountantClaimPack(submitted);
     expect(pack.claims.length).toBeGreaterThan(0);
     expect(pack.claims.some((row) => row.scheme.includes('NHIS'))).toBe(true);
-    expect(pack.claims.some((row) => row.ccCode === 'CC-AMARA-2049183')).toBe(true);
+    expect(pack.claims.some((row) => row.ccCode === '20491')).toBe(true);
     expect(pack.totalGhs).toBeGreaterThan(0);
     expect(pack.lines.length).toBeGreaterThan(0);
     const xml = accountantClaimsExcelXml(submitted);

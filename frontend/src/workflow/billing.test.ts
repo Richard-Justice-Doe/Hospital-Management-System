@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { canReceivePayment, canRemoveBill, collectionsSummary, paidAmount } from './billing';
+import {
+  canReceivePayment,
+  canRemoveBill,
+  collectionsSummary,
+  paidAmount,
+  patientDepositBalance,
+  postExternalReceipt,
+  postPatientDeposit,
+  salesSummaryByUser,
+} from './billing';
 import { createSeedState } from './seed';
 import { payAmountTowardBill, payBill, removeCharge, voidVisitPayment } from './store';
-import { hasGhanaNhiss, visitMissingRequiredCc } from './patientAdmin';
+import { hasGhanaNhiss, patientAgeLabel, previousVisitCcCode, visitMissingRequiredCc } from './patientAdmin';
 import { canControlDepartment } from './types';
 
 describe('collections and department in-charge', () => {
@@ -53,8 +62,23 @@ describe('collections and department in-charge', () => {
     expect(hasGhanaNhiss(patient)).toBe(true);
     expect(visitMissingRequiredCc(patient, visit)).toBe(false);
     expect(visitMissingRequiredCc(patient, { nhisCcCode: undefined })).toBe(true);
-    expect(visitMissingRequiredCc(patient, { nhisCcCode: undefined }, 'CC-AMARA-2049183')).toBe(false);
+    expect(visitMissingRequiredCc(patient, { nhisCcCode: undefined }, '20491')).toBe(false);
+    expect(visitMissingRequiredCc(patient, { nhisCcCode: undefined }, '204918')).toBe(true);
+    expect(visitMissingRequiredCc(patient, { nhisCcCode: undefined }, '2049')).toBe(true);
     expect(visitMissingRequiredCc(state.patients.find((item) => item.id === 'pat-lisa'), { nhisCcCode: undefined })).toBe(false);
+    expect(hasGhanaNhiss({ insuranceType: 'GOVERNMENT' })).toBe(true);
+    expect(hasGhanaNhiss({ hinNumber: 'HIN-2049183' })).toBe(true);
+    expect(hasGhanaNhiss({ ghanaCardNo: 'GHA-123456789-1' })).toBe(true);
+    expect(visitMissingRequiredCc({ insuranceType: 'GOVERNMENT', hinNumber: 'HIN-1' }, { nhisCcCode: undefined })).toBe(true);
+    expect(hasGhanaNhiss({ insuranceType: 'CASH', ghanaCardNo: 'GHA-123456789-1' })).toBe(false);
+    expect(hasGhanaNhiss({ insuranceType: 'PRIVATE', insuranceNumber: 'AH-1' })).toBe(false);
+    expect(previousVisitCcCode(state.visits, 'pat-amara')).toBe('20491');
+    expect(previousVisitCcCode(state.visits, 'pat-amara', 'vis-amara')).toBeUndefined();
+  });
+
+  it('prints age as years and months for generate bill', () => {
+    expect(patientAgeLabel({ age: 28, dateOfBirth: '1998-07-24' }, new Date('2026-08-24'))).toBe('28 years, 1 month');
+    expect(patientAgeLabel({ age: 7 }, new Date('2026-08-24'))).toBe('7 years');
   });
 
   it('can take part of a bill now and leave the rest', () => {
@@ -101,5 +125,34 @@ describe('collections and department in-charge', () => {
     expect(canControlDepartment({ role: 'MATRON' }, 'WARD')).toBe(true);
     expect(canControlDepartment({ role: 'MATRON' }, 'MATERNITY')).toBe(true);
     expect(canControlDepartment({ role: 'MATRON' }, 'LAB')).toBe(false);
+  });
+
+  it('posts a patient deposit onto the folder and counts it in sales', () => {
+    const seed = createSeedState();
+    const before = paidAmount(seed, 'day');
+    const next = postPatientDeposit(seed, { patientId: 'pat-amara', amountGhs: 80, staffId: 'staff-cashier', method: 'CASH' });
+    expect(patientDepositBalance(next, 'pat-amara')).toBe(80);
+    expect(next.patientDeposits[0]?.receiptNo).toMatch(/^RCP-/);
+    expect(paidAmount(next, 'day')).toBe(before + 80);
+    const sales = salesSummaryByUser(next, 'day');
+    const cashier = sales.find((row) => row.staffId === 'staff-cashier');
+    expect(cashier?.amount).toBeGreaterThanOrEqual(80);
+  });
+
+  it('prints an external receipt take without changing a visit bill', () => {
+    const seed = createSeedState();
+    const nina = seed.visits.find((item) => item.id === 'vis-nina');
+    const due = nina?.orders.reduce((sum, order) => sum + (order.paidAt ? 0 : order.priceGhs), 0) ?? 0;
+    const next = postExternalReceipt(seed, {
+      payerName: 'Kwame Mensah',
+      amountGhs: 25,
+      description: 'Folder copy fee',
+      staffId: 'staff-cashier',
+    });
+    expect(next.externalReceipts[0]?.receiptNo).toMatch(/^RCP-/);
+    expect(next.externalReceipts[0]?.payerName).toBe('Kwame Mensah');
+    expect(next.visits.find((item) => item.id === 'vis-nina')?.orders[0]?.paidAt).toBeFalsy();
+    const stillDue = next.visits.find((item) => item.id === 'vis-nina')?.orders.reduce((sum, order) => sum + (order.paidAt ? 0 : order.priceGhs), 0);
+    expect(stillDue).toBe(due);
   });
 });

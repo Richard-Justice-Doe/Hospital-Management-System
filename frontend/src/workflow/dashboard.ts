@@ -3,6 +3,7 @@ import { visitBalance } from './billing';
 import { isLowStock } from './pharmacyStock';
 import { moneyBooks } from './accounts';
 import { itDeskStats } from './itDesk';
+import { theatreStats } from './theatre';
 import { accountantInboxTotals, claimDeskStats, storeStats } from './supportDesks';
 import type { PageKey } from './permissions';
 import type { CareState, ClinicId, Department, InsuranceType, PatientRecord, VisitRecord } from './types';
@@ -262,7 +263,17 @@ function pageCards(state: CareState, page: PageKey, period: DashboardPeriod, sna
     ];
   }
 
-  if (page === 'lab' || page === 'pharmacy' || page === 'xray' || page === 'physio' || page === 'dental' || page === 'eye' || page === 'ent' || page === 'maternity' || page === 'theatre') {
+  if (page === 'theatre') {
+    const ot = theatreStats(state);
+    return [
+      { key: 'scheduled', label: 'Scheduled', value: ot.scheduled, hint: 'Waiting for pre-op and knife-to-skin' },
+      { key: 'in', label: 'In theatre', value: ot.inTheatre, hint: 'Procedure underway' },
+      { key: 'recovery', label: 'Recovery', value: ot.recovery, hint: 'Post-op observation' },
+      { key: 'queue', label: 'Pending orders', value: pendingDeptOrders(state, 'THEATRE'), hint: 'Doctor orders not finished' },
+    ];
+  }
+
+  if (page === 'lab' || page === 'pharmacy' || page === 'xray' || page === 'physio' || page === 'dental' || page === 'eye' || page === 'ent' || page === 'maternity') {
     const department = PAGE_DASHBOARD_DEPARTMENT[page]!;
     const row = snapshot.departments.find((item) => item.id === department);
     return [
@@ -373,9 +384,13 @@ function pageCards(state: CareState, page: PageKey, period: DashboardPeriod, sna
   }
 
   if (page === 'shifts') {
-    const onDuty = (state.shifts ?? []).filter((shift) => shift.day === new Date().toISOString().slice(0, 10)).length;
+    const today = new Date().toISOString().slice(0, 10);
+    const month = today.slice(0, 7);
+    const onDuty = (state.shifts ?? []).filter((shift) => shift.day === today).length;
+    const thisMonth = (state.shifts ?? []).filter((shift) => shift.day.startsWith(month)).length;
     return [
       { key: 'today', label: 'Shifts today', value: onDuty, hint: 'Rostered for this date' },
+      { key: 'month', label: 'This month', value: thisMonth, hint: 'Rostered days this month' },
       { key: 'staff', label: 'Staff', value: state.staff.filter((staff) => staff.isActive).length, hint: 'Active accounts' },
     ];
   }

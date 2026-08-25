@@ -17,9 +17,10 @@ import { ordersForDepartment } from '../workflow/store';
 import { dispenseStock } from '../workflow/his';
 import { canControlDepartment } from '../workflow/types';
 import type { ControlledLogRecord, DrugStockRecord, HospitalService, PatientRecord, ServiceOrder, VisitRecord } from '../workflow/types';
+import { DeskPage, DeskTabs, PageHeader } from '../components/PageChrome';
 
-const th = 'border border-slate-200 bg-slate-50 px-3 py-2 text-left font-semibold';
-const td = 'border border-slate-200 px-3 py-2 align-top';
+const th = 'bg-slate-800 px-3 py-2.5 text-left font-semibold text-white';
+const td = 'border-b border-slate-100 px-3 py-2.5 align-top';
 
 function stockForOrder(stock: DrugStockRecord[], serviceId: string) {
   return stock.find((item) => item.serviceId === serviceId && !item.controlled) ?? stock.find((item) => item.serviceId === serviceId);
@@ -50,15 +51,15 @@ export default function PharmacyPage() {
   const staffId = user?.id ?? 'staff-pharmacy';
 
   return (
-    <div>
-      <div className="flex gap-2 border-b px-6 pt-4">
-        <button type="button" className={`px-3 py-2 text-sm ${tab === 'queue' ? 'border-b-2 border-clinic-600 font-medium' : 'text-slate-600'}`} onClick={() => setTab('queue')}>
-          Dispense queue
-        </button>
-        <button type="button" className={`px-3 py-2 text-sm ${tab === 'stock' ? 'border-b-2 border-clinic-600 font-medium' : 'text-slate-600'}`} onClick={() => setTab('stock')}>
-          Inventory
-        </button>
-      </div>
+    <DeskPage>
+      <DeskTabs
+        items={[
+          { id: 'queue', label: 'Dispense queue' },
+          { id: 'stock', label: 'Inventory' },
+        ]}
+        value={tab}
+        onChange={(id) => setTab(id as 'queue' | 'stock')}
+      />
       <PharmacyStockAlert stock={state.drugStock} />
       {prompt && (
         <RecordSavedModal
@@ -70,11 +71,8 @@ export default function PharmacyPage() {
       )}
 
       {tab === 'queue' ? (
-        <div className="space-y-5 p-6">
-          <div>
-            <h1 className="text-xl font-semibold text-clinic-900">Pharmacy</h1>
-            <p className="mt-1 text-sm text-slate-500">Verify the prescription, check the shelf, then dispense and label.</p>
-          </div>
+        <div className="mt-5 space-y-5">
+          <PageHeader title="Pharmacy" hint="Verify the prescription, check the shelf, then dispense and label." />
           <DepartmentShiftPanel department="PHARMACY" />
           <QueueTable
             queue={queue}
@@ -91,20 +89,21 @@ export default function PharmacyPage() {
           />
         </div>
       ) : (
-        <div className="space-y-5 p-6">
-          <div>
-            <h1 className="text-xl font-semibold text-clinic-900">Pharmacy inventory</h1>
-            <p className="mt-1 text-sm text-slate-600">
-              Medicines on this desk.{' '}
-              <Link className="text-clinic-700 hover:underline" to="/care/stores">
-                Open stores
-              </Link>
-              {' · '}
-              <Link className="text-clinic-700 hover:underline" to="/care/procurement">
-                Open procurement
-              </Link>
-            </p>
-          </div>
+        <div className="mt-5 space-y-5">
+          <PageHeader
+            title="Pharmacy inventory"
+            hint="Medicines on this desk."
+            actions={
+              <div className="flex gap-3 text-sm font-semibold">
+                <Link className="text-clinic-700 hover:underline" to="/care/stores">
+                  Open stores
+                </Link>
+                <Link className="text-clinic-700 hover:underline" to="/care/procurement">
+                  Open procurement
+                </Link>
+              </div>
+            }
+          />
           {isHead && <BillsTable rows={bills} patients={state.patients} onRemove={removeFromBill} />}
           <StockTable
             stock={state.drugStock ?? []}
@@ -124,7 +123,7 @@ export default function PharmacyPage() {
           {isHead && <ServicesTable services={services} onToggle={toggleService} onPrice={updatePrice} />}
         </div>
       )}
-    </div>
+    </DeskPage>
   );
 }
 

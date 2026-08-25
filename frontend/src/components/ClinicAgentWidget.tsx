@@ -38,7 +38,7 @@ export default function ClinicAgentWidget() {
         onClick={() => setOpen((value) => !value)}
         className="ml-auto flex h-12 items-center gap-2 rounded-full bg-clinic-600 px-4 text-sm font-medium text-white hover:bg-clinic-700"
       >
-        {open ? 'Hide assistant' : 'Ask AI'}
+        {open ? 'Hide assistant' : 'Assistant'}
       </button>
     </div>
   );

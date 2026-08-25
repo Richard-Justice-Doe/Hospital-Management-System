@@ -5,41 +5,41 @@ import { STAGE_LABELS } from './types';
 
 export type DeskLang = 'en' | 'tw' | 'gaa';
 
-export const PAY_METHODS: Array<{ id: PayMethod; label: string; icon: string }> = [
-  { id: 'CASH', label: 'Cash', icon: '💵' },
-  { id: 'MOMO', label: 'MoMo', icon: '📱' },
-  { id: 'NHIS', label: 'NHIS', icon: '🪪' },
-  { id: 'CARD', label: 'Card', icon: '💳' },
-  { id: 'BANK', label: 'Bank', icon: '🏦' },
+export const PAY_METHODS: Array<{ id: PayMethod; label: string }> = [
+  { id: 'CASH', label: 'Cash' },
+  { id: 'MOMO', label: 'MoMo' },
+  { id: 'NHIS', label: 'NHIS' },
+  { id: 'CARD', label: 'Card' },
+  { id: 'BANK', label: 'Bank' },
 ];
 
-export const STAGE_PICTURE: Record<VisitStage, { icon: string; color: string }> = {
-  CHECKED_IN: { icon: '🚪', color: 'bg-sky-100 text-sky-800' },
-  VITALS_DONE: { icon: '❤️', color: 'bg-rose-100 text-rose-800' },
-  WITH_DOCTOR: { icon: '👨‍⚕️', color: 'bg-clinic-50 text-clinic-800' },
-  AWAITING_SERVICES: { icon: '🧪', color: 'bg-violet-100 text-violet-800' },
-  READY_TO_BILL: { icon: '🧾', color: 'bg-amber-100 text-amber-800' },
-  COMPLETED: { icon: '✅', color: 'bg-emerald-100 text-emerald-800' },
+export const STAGE_PICTURE: Record<VisitStage, { color: string }> = {
+  CHECKED_IN: { color: 'bg-sky-100 text-sky-800' },
+  VITALS_DONE: { color: 'bg-rose-100 text-rose-800' },
+  WITH_DOCTOR: { color: 'bg-clinic-50 text-clinic-800' },
+  AWAITING_SERVICES: { color: 'bg-violet-100 text-violet-800' },
+  READY_TO_BILL: { color: 'bg-amber-100 text-amber-800' },
+  COMPLETED: { color: 'bg-emerald-100 text-emerald-800' },
 };
 
-export const DEPT_PICTURE: Record<Department, { icon: string; label: string }> = {
-  RECORDS: { icon: '📁', label: 'Records' },
-  CONSULTATION: { icon: '👨‍⚕️', label: 'Doctor' },
-  NURSING: { icon: '🩺', label: 'Nursing' },
-  LAB: { icon: '🧪', label: 'Lab' },
-  PHARMACY: { icon: '💊', label: 'Pharmacy' },
-  RADIOLOGY: { icon: '📷', label: 'X-ray' },
-  PHYSIO: { icon: '💪', label: 'Physio' },
-  DENTAL: { icon: '🦷', label: 'Dental' },
-  EYE: { icon: '👁️', label: 'Eye' },
-  ENT: { icon: '👂', label: 'ENT' },
-  MATERNITY: { icon: '🤰', label: 'Maternity' },
-  THEATRE: { icon: '🔪', label: 'Theatre' },
-  WARD: { icon: '🛏️', label: 'Ward' },
-  CLAIMS: { icon: '🪪', label: 'Claims' },
-  STORES: { icon: '📦', label: 'Stores' },
-  PROCUREMENT: { icon: '🛒', label: 'Procurement' },
-  IT: { icon: '💻', label: 'IT' },
+export const DEPT_PICTURE: Record<Department, { label: string }> = {
+  RECORDS: { label: 'Records' },
+  CONSULTATION: { label: 'Doctor' },
+  NURSING: { label: 'Nursing' },
+  LAB: { label: 'Lab' },
+  PHARMACY: { label: 'Pharmacy' },
+  RADIOLOGY: { label: 'X-ray' },
+  PHYSIO: { label: 'Physio' },
+  DENTAL: { label: 'Dental' },
+  EYE: { label: 'Eye' },
+  ENT: { label: 'ENT' },
+  MATERNITY: { label: 'Maternity' },
+  THEATRE: { label: 'Theatre' },
+  WARD: { label: 'Ward' },
+  CLAIMS: { label: 'Claims' },
+  STORES: { label: 'Stores' },
+  PROCUREMENT: { label: 'Procurement' },
+  IT: { label: 'IT' },
 };
 
 const COPY: Record<DeskLang, Record<string, string>> = {

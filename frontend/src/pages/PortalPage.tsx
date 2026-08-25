@@ -14,6 +14,7 @@ import {
   type PortalFilter,
 } from '../workflow/portalFilters';
 import PageDateBox from '../components/PageDateBox';
+import HospitalMark from '../components/HospitalMark';
 import { btnPrimary, inputClass } from './admin/adminUi';
 import { portalLoginRequest, portalLogoutRequest, portalMeRequest, USE_SERVER } from '../lib/server';
 import { AuthError } from '../lib/api';
@@ -83,12 +84,22 @@ export default function PortalPage() {
 
   if (!patient) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-clinic-50 px-4">
-        <form onSubmit={(e) => void signIn(e)} className="w-full max-w-md space-y-3 rounded-2xl bg-white p-8">
+      <div className="flex min-h-screen flex-col bg-slate-100">
+        <header className="bg-clinic-900 px-4 py-4 text-white">
+          <div className="mx-auto flex max-w-md items-center gap-3">
+            <HospitalMark size="sm" />
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-clinic-100">Municipal hospital</p>
+              <p className="text-sm font-semibold">Patient portal</p>
+            </div>
+          </div>
+        </header>
+        <div className="flex flex-1 items-center justify-center px-4 py-10">
+        <form onSubmit={(e) => void signIn(e)} className="w-full max-w-md space-y-3 desk-panel p-8">
           <div className="flex justify-end">
             <PageDateBox />
           </div>
-          <h1 className="text-xl font-semibold text-clinic-900">Patient portal</h1>
+          <h1 className="desk-title">Open your record</h1>
           <p className="text-sm text-slate-600">Appointments, results, and amounts due.</p>
           {error && <p className="text-sm text-red-700">{error}</p>}
           <input className={inputClass} placeholder="Folder number e.g. A1/2026" value={hospitalNo} onChange={(e) => setHospitalNo(e.target.value)} />
@@ -96,20 +107,21 @@ export default function PortalPage() {
           <button className={`${btnPrimary} w-full`} type="submit">
             Open my record
           </button>
-          <Link className="block text-center text-sm text-clinic-700" to="/login">
+          <Link className="block text-center text-sm font-semibold text-clinic-700 hover:underline" to="/login">
             Staff sign-in
           </Link>
         </form>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
+    <div className="min-h-screen bg-slate-100 p-6">
       <div className="mx-auto max-w-3xl space-y-4">
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between desk-panel p-5">
           <div>
-            <h1 className="text-xl font-semibold">
+            <h1 className="desk-title">
               {patient.firstName} {patient.lastName}
             </h1>
             <p className="text-sm text-slate-500">{patient.hospitalNo}</p>
@@ -128,7 +140,7 @@ export default function PortalPage() {
           </button>
           </div>
         </div>
-        <section className="rounded-xl border bg-white p-5">
+        <section className="desk-panel p-5">
           <h2 className="font-medium">Filter by role</h2>
           <div className="mt-3 flex flex-wrap gap-2" role="tablist" aria-label="Portal role filters">
             {PORTAL_FILTERS.map((item) => (
@@ -148,7 +160,7 @@ export default function PortalPage() {
           </div>
         </section>
         {showPortalSection('appointments', filter) && (
-        <section className="rounded-xl border bg-white p-5">
+        <section className="desk-panel p-5">
           <h2 className="font-medium">Appointments</h2>
           <ul className="mt-2 text-sm">
             {visibleAppts.length === 0 && <li>No upcoming bookings.</li>}
@@ -161,7 +173,7 @@ export default function PortalPage() {
         </section>
         )}
         {showPortalSection('visits', filter) && (
-        <section className="rounded-xl border bg-white p-5">
+        <section className="desk-panel p-5">
           <h2 className="font-medium">Results & visits</h2>
           <ul className="mt-2 text-sm">
             {visibleVisits.length === 0 && <li className="text-slate-500">No visits for this role.</li>}
@@ -181,13 +193,13 @@ export default function PortalPage() {
         </section>
         )}
         {showPortalSection('billing', filter) && (
-        <section className="rounded-xl border bg-white p-5">
+        <section className="desk-panel p-5">
           <h2 className="font-medium">Amount due</h2>
           <p className="text-sm">{due.length ? formatGhs(due.reduce((s, o) => s + o.priceGhs, 0)) : 'Nothing outstanding.'}</p>
         </section>
         )}
         {showPortalSection('messages', filter) && (
-        <section className="rounded-xl border bg-white p-5">
+        <section className="desk-panel p-5">
           <h2 className="font-medium">Messages</h2>
           <ul className="mt-2 text-sm">
             {visibleNotes.map((n) => (

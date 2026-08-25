@@ -17,11 +17,13 @@ import {
   recordChartAccess,
 } from '../workflow/his';
 import { searchPatients } from '../workflow/store';
+import { insuranceLabel } from '../workflow/patientAdmin';
 import VisitChargeSummary from '../components/VisitChargeSummary';
 import { type NoteSensitivity } from '../workflow/types';
 import { canAccessPage } from '../workflow/permissions';
 import { useStaffAccess } from '../hooks/useStaffAccess';
 import { btnPrimary, btnSecondary, inputClass } from './admin/adminUi';
+import { DeskPage, PageHeader } from '../components/PageChrome';
 
 export default function ChartPage() {
   const { user } = useAuth();
@@ -48,11 +50,11 @@ export default function ChartPage() {
   const restricted = notes.find((n) => n.sensitivity !== 'GENERAL');
 
   return (
-    <div className="p-6">
-      <h1 className="text-xl font-semibold text-clinic-900">Patient chart</h1>
+    <DeskPage>
+      <PageHeader title="Patient chart" />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
-        <section className="rounded-xl border bg-white p-4">
+        <section className="desk-panel p-4">
           <input
             className={inputClass}
             placeholder="Search name, phone, or folder number"
@@ -72,7 +74,7 @@ export default function ChartPage() {
                 >
                   <PatientIdentity patient={p} />
                   <span className="mt-0.5 block text-xs text-slate-500">
-                    {p.age}y · {p.insuranceType ?? 'CASH'}
+                    {p.phone} · {insuranceLabel(p)}
                   </span>
                 </button>
               </li>
@@ -82,19 +84,23 @@ export default function ChartPage() {
 
         <section className="space-y-4 lg:col-span-2">
           {!patient ? (
-            <p className="rounded-xl border bg-white p-5 text-sm text-slate-500">Select a patient.</p>
+            <p className="desk-panel p-5 text-sm text-slate-500">Select a patient.</p>
           ) : (
             <>
-              <div className="rounded-xl border bg-white p-5">
+              <div className="desk-panel p-5">
                 <h2 className="text-lg font-medium">
                   <PatientIdentity patient={patient} />
                 </h2>
                 <p className="text-sm text-slate-600">
                   {patient.age}y {patient.gender} · {patient.phone} · {patient.town}
                 </p>
-                <p className="text-sm text-slate-600">
-                  Cover: {patient.insuranceType ?? 'CASH'} {patient.insuranceNumber ?? ''}
-                </p>
+                <p className="text-sm text-slate-600">Cover: {insuranceLabel(patient)}</p>
+                {patient.insuranceType === 'PRIVATE' && (patient.insuranceProvider || patient.insuranceNumber) && (
+                  <p className="mt-2 rounded-lg bg-clinic-50 px-3 py-2 text-sm text-clinic-900">
+                    Private insurance on this folder: {[patient.insuranceProvider, patient.insuranceNumber].filter(Boolean).join(' · ')}.
+                    Use if they forgot their card.
+                  </p>
+                )}
                 <button
                   type="button"
                   className={`${btnSecondary} mt-3`}
@@ -351,7 +357,7 @@ export default function ChartPage() {
               </ChartBlock>
               </>
               ) : (
-                <p className="rounded-xl border bg-white p-5 text-sm text-slate-500">
+                <p className="desk-panel p-5 text-sm text-slate-500">
                   Allergies, problems, medications, immunizations, family links, and clinical notes are entered by the doctor.
                 </p>
               )}
@@ -359,13 +365,13 @@ export default function ChartPage() {
           )}
         </section>
       </div>
-    </div>
+    </DeskPage>
   );
 }
 
 function ChartBlock({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-xl border bg-white p-5">
+    <section className="desk-panel p-5">
       <h3 className="font-medium text-slate-900">{title}</h3>
       <div className="mt-2">{children}</div>
     </section>

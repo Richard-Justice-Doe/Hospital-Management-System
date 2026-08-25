@@ -41,6 +41,7 @@ import { payAmountTowardBill } from '../workflow/store';
 import { moneyPeriod } from '../workflow/accounts';
 import type { ExpenseCategory, FinanceAdjustKind, FinanceReasonCode, PayMethod } from '../workflow/types';
 import { btnPrimary, btnSecondary, Field, inputClass } from './admin/adminUi';
+import { DeskPage, DeskTabs, PageHeader } from '../components/PageChrome';
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -58,8 +59,8 @@ type TabId = (typeof TABS)[number]['id'];
 
 function Card({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <article className="rounded-xl border bg-slate-50 p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+    <article className="desk-panel p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
       <p className="mt-1 text-xl font-semibold text-clinic-900">{value}</p>
       {hint ? <p className="mt-1 text-xs text-slate-500">{hint}</p> : null}
     </article>
@@ -93,28 +94,19 @@ export default function AccountantDesk() {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-clinic-900">Accounts — money books</h1>
-          <p className="mt-1 text-sm text-slate-500">Financial work only. Clinical notes stay with the clinical team.</p>
-        </div>
-        <button type="button" className={btnSecondary} onClick={() => downloadFinancePackCsv(state)}>
-          Export finance pack
-        </button>
-      </div>
-
-      <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
-        {TABS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setTab(item.id)}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold ${tab === item.id ? 'bg-clinic-600 text-white' : 'border bg-white text-slate-700 hover:bg-slate-50'}`}
-          >
-            {item.label}
+    <DeskPage>
+      <PageHeader
+        title="Accounts — money books"
+        hint="Financial work only. Clinical notes stay with the clinical team."
+        actions={
+          <button type="button" className={btnSecondary} onClick={() => downloadFinancePackCsv(state)}>
+            Export finance pack
           </button>
-        ))}
+        }
+      />
+
+      <div className="mt-4">
+        <DeskTabs items={[...TABS]} value={tab} onChange={(id) => setTab(id as TabId)} />
       </div>
 
       {tab === 'dashboard' && (
@@ -144,7 +136,7 @@ export default function AccountantDesk() {
             <Card label="Cash drawer today" value={formatGhs(dash.cash.drawer)} />
             <Card label="Bank / cash position" value={formatGhs(dash.cash.bank)} hint={`${dash.cash.unmatched} unmatched bank lines`} />
           </div>
-          <section className="rounded-2xl border bg-white p-5">
+          <section className="desk-panel p-5">
             <h2 className="font-semibold">Alerts</h2>
             {dash.alerts.length === 0 ? (
               <p className="mt-2 text-sm text-slate-500">No finance alerts.</p>
@@ -209,7 +201,7 @@ export default function AccountantDesk() {
       {selectedInvoice && periodIsLocked(state, selectedInvoice.date) ? (
         <p className="sr-only">Period locked</p>
       ) : null}
-    </div>
+    </DeskPage>
   );
 }
 
@@ -268,7 +260,7 @@ function BillingTab({
         </select>
       </Field>
       {row && (
-        <section className="rounded-2xl border bg-white p-5">
+        <section className="desk-panel p-5">
           <div className="flex flex-wrap justify-between gap-2">
             <div>
               <PatientIdentity patient={patient} extra={` · ${row.payer}`} />
@@ -381,7 +373,7 @@ function PaymentsTab({
           <Card key={bucket} label={bucket} value={formatGhs(aging[bucket].amount)} hint={`${aging[bucket].count} open`} />
         ))}
       </div>
-      <section className="rounded-2xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <h2 className="font-semibold">Record a payment</h2>
         <p className="mt-1 text-sm text-slate-500">Cash stays with the cashier. Accounts can post MoMo, card, NHIS, or bank.</p>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -422,7 +414,7 @@ function PaymentsTab({
           </div>
         )}
       </section>
-      <section className="rounded-2xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <h2 className="font-semibold">Refunds and write-offs awaiting approval</h2>
         {(state.financeAdjustments ?? []).length === 0 ? (
           <p className="mt-2 text-sm text-slate-500">None yet.</p>
@@ -484,7 +476,7 @@ function ClaimsTab({
           />
         ))}
       </div>
-      <section className="rounded-2xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <h2 className="font-semibold">Claims queue</h2>
         <ul className="mt-3 space-y-2">
           {claims.map((row) => (
@@ -564,7 +556,7 @@ function PayablesTab({
 
   return (
     <div className="mt-6 space-y-4">
-      <section className="rounded-2xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <h2 className="font-semibold">Things to purchase</h2>
         <ul className="mt-3 space-y-2">
           {purchases.map((row) => (
@@ -583,7 +575,7 @@ function PayablesTab({
         </ul>
       </section>
       <form
-        className="grid gap-2 rounded-2xl border bg-white p-5 sm:grid-cols-2"
+        className="grid gap-2 desk-panel p-5 sm:grid-cols-2"
         onSubmit={(e) => {
           e.preventDefault();
           onChange((current) =>
@@ -627,7 +619,7 @@ function PayablesTab({
           Save vendor invoice
         </button>
       </form>
-      <section className="rounded-2xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <h2 className="font-semibold">3-way match</h2>
         <ul className="mt-3 space-y-2">
           {(state.vendorInvoices ?? []).map((invoice) => {
@@ -682,7 +674,7 @@ function ReportsTab({ state }: { state: ReturnType<typeof useCare>['state'] }) {
         <Card label="Expenses + VAT" value={formatGhs(pnl.expenses)} hint={`VAT 15% ${formatGhs(pnl.vat)}`} />
         <Card label="Surplus" value={formatGhs(pnl.surplus)} />
       </div>
-      <section className="rounded-2xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <h2 className="font-semibold">Revenue by department</h2>
         <ul className="mt-2 text-sm">
           {revenueByDepartment(state).map((row) => (
@@ -693,7 +685,7 @@ function ReportsTab({ state }: { state: ReturnType<typeof useCare>['state'] }) {
           {revenueByDepartment(state).length === 0 ? <li>No paid service lines yet.</li> : null}
         </ul>
       </section>
-      <section className="rounded-2xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <h2 className="font-semibold">Cash flow / position</h2>
         <p className="mt-2 text-sm">
           Drawer {formatGhs(cash.drawer)} · Bank {formatGhs(cash.bank)} · Opening {formatGhs(cash.opening)}
@@ -719,7 +711,7 @@ function ReconcileTab({
 
   return (
     <div className="mt-6 space-y-4">
-      <section className="rounded-2xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <h2 className="font-semibold">Bank ledger</h2>
         <div className="mt-3 grid gap-2 sm:grid-cols-4">
           <input className={inputClass} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount" />
@@ -760,10 +752,10 @@ function ReconcileTab({
           ))}
         </ul>
       </section>
-      <section className="rounded-2xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <h2 className="font-semibold">Cash drawer closes</h2>
         {closes.length === 0 ? (
-          <p className="mt-2 text-sm text-slate-500">No drawer closes yet. The cashier locks the till on Receive payment.</p>
+          <p className="mt-2 text-sm text-slate-500">No drawer closes yet. The cashier locks the till on the cash unit.</p>
         ) : (
           closes.slice(0, 8).map((row) => (
             <p key={row.id} className="mt-2 text-sm">
@@ -791,7 +783,7 @@ function AuditTab({
   );
   return (
     <div className="mt-6 space-y-4">
-      <section className="rounded-2xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <h2 className="font-semibold">Period lock</h2>
         <p className="mt-1 text-sm text-slate-500">Locking {period} stops edits to that month’s books for external audit.</p>
         <button type="button" className={`${btnPrimary} mt-3`} onClick={() => onChange((current) => lockFinancePeriod(current, period, staffId))}>
@@ -805,7 +797,7 @@ function AuditTab({
           ))}
         </ul>
       </section>
-      <section className="rounded-2xl border bg-white p-5">
+      <section className="desk-panel p-5">
         <h2 className="font-semibold">Financial audit trail</h2>
         <p className="mt-1 text-sm text-slate-500">Who, what, when. Invoices are voided, never deleted.</p>
         <ul className="mt-3 max-h-96 space-y-2 overflow-auto text-sm">

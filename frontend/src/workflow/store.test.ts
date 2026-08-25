@@ -1,7 +1,8 @@
 import { evaluateVitals } from './vitals';
 import { describe, expect, it } from 'vitest';
-import { allocatePatientFolder, applyVisitBilling, checkInByHospitalNo, checkInExisting, completeOrder, completeOrders, createPatientFolder, createStaff, payBill, payOrders, planCare, recordVitals, registerPatient, resetCareState, saveCareState, searchPatients, sendToDoctor, authenticateStaff } from './store';
+import { allocatePatientFolder, applyVisitBilling, appendBillLines, checkInByHospitalNo, checkInExisting, completeOrder, completeOrders, createPatientFolder, createStaff, payBill, payOrders, planCare, recordVitals, registerPatient, resetCareState, saveCareState, savePatientCheckIn, searchPatients, sendToDoctor, authenticateStaff, updatePatientFolder, upsertCopayer } from './store';
 import { visitMissingRequiredCc } from './patientAdmin';
+import { claimQueue, claimSchemeOf } from './supportDesks';
 import { unpaidOrders } from './billing';
 import { createSeedState } from './seed';
 
@@ -51,12 +52,47 @@ describe('care workflow store', () => {
     });
     expect(next.patients[0]?.hospitalNo).toBe(`A6/${new Date().getFullYear()}`);
     expect(next.patients[0]?.folderCreatedAt).toBeTruthy();
+    expect(next.patients[0]?.nextOfKin).toBeUndefined();
     expect(next.visits.some((v) => v.patientId === next.patients[0]?.id)).toBe(false);
+  });
+
+  it('stores next of kin, estimated age, and registration clinic on a new folder', () => {
+    const next = createPatientFolder(createSeedState(), {
+      firstName: 'Akua',
+      lastName: 'Boateng',
+      age: 40,
+      ageEstimated: true,
+      gender: 'Female',
+      phone: '024 777 0101',
+      address: 'House 3',
+      hometown: 'Techiman',
+      nextOfKinName: 'Kofi Boateng',
+      nextOfKinRelationship: 'Spouse',
+      nextOfKinPhone: '024 777 0102',
+      preferredPayment: 'NHIS',
+      insuranceType: 'GOVERNMENT',
+      ghanaCardNo: 'GHA-777010101-1',
+      insuranceNumber: 'NHIS-777',
+      registrationVisitType: 'WALK_IN',
+      registeredClinic: 'GENERAL',
+      consentTreatment: true,
+      bloodGroup: 'O+',
+      knownAllergies: 'Penicillin',
+      staffId: 'staff-reception',
+    });
+    const patient = next.patients[0];
+    expect(patient?.ageEstimated).toBe(true);
+    expect(patient?.age).toBe(40);
+    expect(patient?.nextOfKin?.name).toBe('Kofi Boateng');
+    expect(patient?.registeredClinic).toBe('GENERAL');
+    expect(patient?.bloodGroup).toBe('O+');
+    expect(patient?.consentTreatment).toBe(true);
+    expect(next.visits.some((v) => v.patientId === patient?.id)).toBe(false);
   });
 
   it('does not bill a second folder when a returning patient is checked in', () => {
     const seeded = createSeedState();
-    const next = checkInByHospitalNo(seeded, 'A1/2026', 'ANC review', 'staff-reception', 'MATERNITY', undefined, 'CC-AMARA-2049183');
+    const next = checkInByHospitalNo(seeded, 'A1/2026', 'ANC review', 'staff-reception', 'MATERNITY', undefined, '20491');
     const visit = next.visits.find((v) => v.patientId === 'pat-amara' && v.stage !== 'COMPLETED');
     expect(visit?.clinic).toBe('MATERNITY');
     expect(visit?.orders.some((o) => o.serviceId === 'reg-folder' && o.chargeable !== false)).toBe(false);
@@ -143,13 +179,67 @@ describe('care workflow store', () => {
     expect('hospitalNo' in nextYear ? nextYear.hospitalNo : undefined).toBe('A1/2027');
   });
 
+  it('saves government or private insurance on a co-payer', () => {
+    const withNhiss = upsertCopayer(createSeedState(), {
+      patientId: 'pat-amara',
+      firstName: 'Abena',
+      lastName: 'Owusu',
+      relationship: 'Parent',
+      phone: '024 111 0188',
+      isPrimary: false,
+      insuranceType: 'GOVERNMENT',
+      insuranceNumber: 'NHIS-ABENA-11',
+      ghanaCardNo: 'GHA-111222333-1',
+    });
+    const nhis = withNhiss.copayers.find((c) => c.firstName === 'Abena');
+    expect(nhis?.insuranceType).toBe('GOVERNMENT');
+    expect(nhis?.insuranceProvider).toBe('NHIS');
+    expect(nhis?.ghanaCardNo).toBe('GHA-111222333-1');
+
+    const withPrivate = upsertCopayer(createSeedState(), {
+      patientId: 'pat-lisa',
+      firstName: 'Acacia',
+      lastName: 'Health',
+      relationship: 'Employer',
+      phone: '030 200 0100',
+      isPrimary: false,
+      insuranceType: 'PRIVATE',
+      insuranceProvider: 'Acacia Health',
+      insuranceNumber: 'ACA-LISA-99',
+    });
+    const policy = withPrivate.copayers.find((c) => c.relationship === 'Employer');
+    expect(policy?.insuranceType).toBe('PRIVATE');
+    expect(policy?.insuranceProvider).toBe('Acacia Health');
+    expect(policy?.insuranceNumber).toBe('ACA-LISA-99');
+  });
+
   it('attaches a co-payer when opening a new visit', () => {
     const seeded = createSeedState();
-    const next = checkInExisting(seeded, 'pat-amara', 'ANC review', 'staff-reception', 'MATERNITY', 'pay-amara-spouse', 'CC-AMARA-2049183');
+    const next = checkInExisting(seeded, 'pat-amara', 'ANC review', 'staff-reception', 'MATERNITY', 'pay-amara-spouse', '20491');
     const visit = next.visits.find((v) => v.patientId === 'pat-amara' && v.stage !== 'COMPLETED');
     expect(visit?.copayerId).toBe('pay-amara-spouse');
     expect(visit?.clinic).toBe('MATERNITY');
-    expect(visit?.nhisCcCode).toBe('CC-AMARA-2049183');
+    expect(visit?.nhisCcCode).toBe('20491');
+  });
+
+  it('stores a new CC code on each visit and does not reuse the last one', () => {
+    const seeded = createSeedState();
+    const closed = {
+      ...seeded,
+      visits: seeded.visits.map((visit) =>
+        visit.patientId === 'pat-amara' ? { ...visit, stage: 'COMPLETED' as const, completedAt: new Date().toISOString() } : visit,
+      ),
+    };
+    const blocked = checkInExisting(closed, 'pat-amara', 'ANC review', 'staff-reception', 'MATERNITY');
+    expect(blocked.visits.some((visit) => visit.patientId === 'pat-amara' && visit.stage !== 'COMPLETED')).toBe(false);
+    const tooLong = checkInExisting(closed, 'pat-amara', 'ANC review', 'staff-reception', 'MATERNITY', undefined, '204918');
+    expect(tooLong.visits.some((visit) => visit.patientId === 'pat-amara' && visit.stage !== 'COMPLETED')).toBe(false);
+    const next = checkInExisting(closed, 'pat-amara', 'ANC review', 'staff-reception', 'MATERNITY', undefined, '99110');
+    const open = next.visits.find((visit) => visit.patientId === 'pat-amara' && visit.stage !== 'COMPLETED');
+    const previous = next.visits.find((visit) => visit.id === 'vis-amara');
+    expect(open?.id).not.toBe('vis-amara');
+    expect(open?.nhisCcCode).toBe('99110');
+    expect(previous?.nhisCcCode).toBe('20491');
   });
 
   it('will not check in or bill an NHIS / Ghana Card patient without a CC code', () => {
@@ -350,10 +440,81 @@ describe('care workflow store', () => {
   it('looks up a returning patient by hospital number', () => {
     const seeded = createSeedState();
     expect(searchPatients(seeded.patients, 'A2/2026')[0]?.lastName).toBe('Mensah');
-    const returned = checkInByHospitalNo(seeded, 'A1/2026', 'ANC review', 'staff-reception', 'GENERAL', undefined, 'CC-AMARA-2049183');
+    const returned = checkInByHospitalNo(seeded, 'A1/2026', 'ANC review', 'staff-reception', 'GENERAL', undefined, '20491');
     const open = returned.visits.filter((v) => v.patientId === 'pat-amara' && v.stage !== 'COMPLETED');
     expect(open).toHaveLength(1);
     expect(open[0]?.reason).toBe('ANC review');
+  });
+
+  it('saves private insurance on the folder and finds it by phone, name, or folder number if the card is missing', () => {
+    const next = createPatientFolder(createSeedState(), {
+      firstName: 'Efua',
+      lastName: 'Sarpong',
+      age: 29,
+      gender: 'Female',
+      phone: '024 888 0101',
+      address: 'Dansoman',
+      town: 'Accra',
+      preferredPayment: 'PRIVATE',
+      insuranceType: 'PRIVATE',
+      insuranceProvider: 'Acacia Health',
+      insuranceNumber: 'AH-99001',
+      staffId: 'staff-reception',
+    });
+    const patient = next.patients[0];
+    expect(patient?.insuranceProvider).toBe('Acacia Health');
+    expect(patient?.insuranceNumber).toBe('AH-99001');
+    expect(searchPatients(next.patients, '0248880101')[0]?.insuranceNumber).toBe('AH-99001');
+    expect(searchPatients(next.patients, 'Sarpong')[0]?.insuranceProvider).toBe('Acacia Health');
+    expect(searchPatients(next.patients, patient?.hospitalNo ?? '')[0]?.id).toBe(patient?.id);
+    expect(searchPatients(next.patients, 'AH-99001')[0]?.lastName).toBe('Sarpong');
+  });
+
+  it('updates a saved folder without changing the hospital number', () => {
+    const created = createPatientFolder(createSeedState(), {
+      firstName: 'Nana',
+      lastName: 'Boateng',
+      age: 41,
+      gender: 'Male',
+      phone: '024 111 2222',
+      address: 'Kaneshie',
+      town: 'Accra',
+      nextOfKinName: 'Ama Boateng',
+      nextOfKinPhone: '024 333 4444',
+      nextOfKinRelation: 'Wife',
+      consentTreatment: true,
+      preferredPayment: 'NHIS',
+      insuranceType: 'NHIS',
+      insuranceNumber: 'HIN-OLD',
+      staffId: 'staff-reception',
+    });
+    const patient = created.patients[0];
+    const hospitalNo = patient?.hospitalNo;
+    const updated = updatePatientFolder(created, patient!.id, {
+      firstName: 'Nana Yaw',
+      lastName: 'Boateng',
+      age: 42,
+      gender: 'Male',
+      phone: '024 999 8888',
+      address: 'Kaneshie Extension',
+      town: 'Accra',
+      nextOfKinName: 'Ama Boateng',
+      nextOfKinPhone: '024 333 4444',
+      nextOfKinRelation: 'Wife',
+      consentTreatment: true,
+      preferredPayment: 'NHIS',
+      insuranceType: 'NHIS',
+      insuranceNumber: 'HIN-NEW',
+      staffId: 'staff-reception',
+    });
+    const saved = updated.state.patients.find((p) => p.id === patient?.id);
+    expect(updated.error).toBeUndefined();
+    expect(saved?.hospitalNo).toBe(hospitalNo);
+    expect(saved?.firstName).toBe('Nana Yaw');
+    expect(saved?.age).toBe(42);
+    expect(saved?.phone).toBe('024 999 8888');
+    expect(saved?.insuranceNumber).toBe('HIN-NEW');
+    expect(saved?.address).toBe('Kaneshie Extension');
   });
 
   it('keeps hospital numbers in the patient database after a demo reset', () => {
@@ -371,5 +532,77 @@ describe('care workflow store', () => {
     const ada = reset.patients.find((p) => p.firstName === 'Ada' && p.lastName === 'Kofi');
     expect(ada?.hospitalNo).toBe(`A6/${new Date().getFullYear()}`);
     expect(new Set(reset.patients.map((p) => p.hospitalNo)).size).toBe(reset.patients.length);
+  });
+
+  it('lets the cash unit add quantity lines to a visit bill', () => {
+    const next = appendBillLines(createSeedState(), 'vis-nina', [{ serviceId: 'lab-fbc', qty: 2 }]);
+    const visit = next.visits.find((item) => item.id === 'vis-nina');
+    const line = visit?.orders.find((order) => order.serviceId === 'lab-fbc');
+    expect(line?.qty).toBe(2);
+    expect(line?.unitPriceGhs).toBe(60);
+    expect(line?.priceGhs).toBe(120);
+    expect(visit?.orders.filter((order) => order.serviceId === 'reg-folder').length).toBe(1);
+  });
+
+  it('checks a patient in and appends billed items in one save', () => {
+    const next = savePatientCheckIn(createSeedState(), {
+      patientId: 'pat-amara',
+      staffId: 'staff-reception',
+      clinic: 'GENERAL',
+      nhisCcCode: '55110',
+      lines: [{ serviceId: 'opd-general', qty: 1 }],
+    });
+    const visit = next.visits.find((item) => item.patientId === 'pat-amara' && item.stage !== 'COMPLETED');
+    expect(visit?.clinic).toBe('GENERAL');
+    expect(visit?.nhisCcCode).toBe('55110');
+    expect(visit?.billable).toBe(true);
+    expect(visit?.orders.some((order) => order.serviceId === 'opd-general' && order.qty === 1)).toBe(true);
+    expect(visit?.stage).toBe('CHECKED_IN');
+  });
+
+  it('does not check the same person in twice on the same day', () => {
+    const seeded = createSeedState();
+    const next = savePatientCheckIn(seeded, {
+      patientId: 'pat-nina',
+      staffId: 'staff-reception',
+      clinic: 'GENERAL',
+      nhisCcCode: '55110',
+      lines: [{ serviceId: 'opd-general', qty: 1 }],
+    });
+    expect(next.visits.filter((item) => item.patientId === 'pat-nina')).toHaveLength(1);
+    expect(next.visits.find((item) => item.id === 'vis-nina')?.orders.some((order) => order.serviceId === 'opd-general')).toBe(false);
+  });
+
+  it('checks an expired NHIS folder in as private without a CC code', () => {
+    const seeded = createSeedState();
+    const expired = {
+      ...seeded,
+      patients: seeded.patients.map((person) =>
+        person.id === 'pat-amara' ? { ...person, nhisExpires: '2025-01-01', nhisStatus: 'EXPIRED' as const } : person,
+      ),
+    };
+    const blocked = savePatientCheckIn(expired, {
+      patientId: 'pat-amara',
+      staffId: 'staff-reception',
+      clinic: 'GENERAL',
+      lines: [],
+    });
+    expect(blocked.visits.some((item) => item.patientId === 'pat-amara' && item.stage !== 'COMPLETED')).toBe(false);
+
+    const next = savePatientCheckIn(expired, {
+      patientId: 'pat-amara',
+      staffId: 'staff-reception',
+      clinic: 'GENERAL',
+      coverAsPrivate: true,
+      lines: [{ serviceId: 'opd-general', qty: 1 }],
+    });
+    const visit = next.visits.find((item) => item.patientId === 'pat-amara' && item.stage !== 'COMPLETED');
+    const person = next.patients.find((item) => item.id === 'pat-amara');
+    expect(visit?.coverAsPrivate).toBe(true);
+    expect(visit?.nhisCcCode).toBeUndefined();
+    expect(visit?.billable).toBe(true);
+    expect(person?.insuranceType).toBe('GOVERNMENT');
+    expect(claimSchemeOf(person, visit)).toBeUndefined();
+    expect(claimQueue(next).some((row) => row.visit.id === visit?.id)).toBe(false);
   });
 });

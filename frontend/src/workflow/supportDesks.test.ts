@@ -22,6 +22,7 @@ describe('support desks', () => {
     expect(filterClaimQueue(rows, 'nhis').every((row) => row.scheme === 'NHIS')).toBe(true);
     expect(filterClaimQueue(rows, 'private').every((row) => row.scheme === 'PRIVATE')).toBe(true);
     expect(claimSchemeOf({ insuranceType: 'CASH' })).toBeUndefined();
+    expect(claimSchemeOf({ insuranceType: 'GOVERNMENT' }, { coverAsPrivate: true })).toBeUndefined();
   });
 
   it('issues store stock and receives a purchase into stores', () => {

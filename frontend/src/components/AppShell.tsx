@@ -8,6 +8,7 @@ import { NotificationsBanner } from '../pages/HisOpsPages';
 import { DEPARTMENT_LABELS } from '../workflow/catalog';
 import { ROLE_LABELS } from '../workflow/types';
 import PageDashboard from './PageDashboard';
+import HospitalMark from './HospitalMark';
 import { canReceivePayment } from '../workflow/billing';
 import { canAccessPage, type PageKey } from '../workflow/permissions';
 import { useStaffAccess } from '../hooks/useStaffAccess';
@@ -28,11 +29,11 @@ const NAV: {
     label: 'Reception',
     page: 'reception',
     children: [
-      { to: '/care/reception/patients', label: '1. New folder' },
-      { to: '/care/reception/visit', label: '2. Check-in & bill' },
-      { to: '/care/reception/visit?mode=bill', label: '3. Bill later' },
-      { to: '/care/reception/visits', label: '4. Today’s visits' },
-      { to: '/care/reception/copayer', label: 'Co-payer' },
+      { to: '/care/reception/patients', label: 'Patient Records' },
+      { to: '/care/reception/copayer', label: 'Assign Copayer Patient' },
+      { to: '/care/reception/visit', label: 'Patient Check In' },
+      { to: '/care/reception/visit?mode=bill', label: 'Bill later' },
+      { to: '/care/reception/visits', label: 'Today’s visits' },
       { to: '/care/reception/merge', label: 'Fix duplicates' },
     ],
   },
@@ -49,7 +50,24 @@ const NAV: {
   { group: 'work', to: '/care/triage', label: 'ED triage', page: 'triage' },
   { group: 'work', to: '/care/ward', label: 'Ward', page: 'ward' },
   { group: 'work', to: '/care/theatre', label: 'Theatre', page: 'theatre' },
-  { group: 'work', to: '/care/billing', label: 'Receive payment', page: 'billing' },
+  {
+    group: 'work',
+    to: '/care/billing',
+    label: 'Cash unit',
+    page: 'billing',
+    children: [
+      { to: '/care/billing/bill', label: 'Generate Bill' },
+      { to: '/care/billing/deposit', label: 'Patient Deposit' },
+      { to: '/care/billing/receipts', label: 'Patient Receipt By User' },
+      { to: '/care/billing/external', label: 'Print External Receipt' },
+      { to: '/care/billing/print', label: 'Print Receipt' },
+      { to: '/care/billing/sales', label: 'Sales Summary By User' },
+      { to: '/care/billing/details', label: 'View Patient Bill Details' },
+      { to: '/care/billing/admin/copayer', label: 'Assign Copayer Patient' },
+      { to: '/care/billing/admin/checkin', label: 'Patient Check In' },
+      { to: '/care/billing/admin/records', label: 'Patient Records' },
+    ],
+  },
   { group: 'work', to: '/care/billing', label: 'Accounts', page: 'collections' },
   { group: 'work', to: '/care/claims', label: 'Claims', page: 'claims' },
   { group: 'work', to: '/care/stores', label: 'Stores', page: 'stores' },
@@ -59,7 +77,7 @@ const NAV: {
   { group: 'desk', to: '/care/appointments', label: 'Appointments', page: 'appointments' },
   { group: 'desk', to: '/care/messages', label: 'Messages', page: 'messages' },
   { group: 'desk', to: '/care/shifts', label: 'My shifts', page: 'shifts' },
-  { group: 'desk', to: '/care/assistant', label: 'Ask AI', page: 'assistant' },
+  { group: 'desk', to: '/care/assistant', label: 'Assistant', page: 'assistant' },
   {
     group: 'setup',
     to: '/care/admin',
@@ -92,27 +110,32 @@ export default function AppShell() {
   const location = useLocation();
   const access = useStaffAccess();
   const links = NAV.filter((link) => {
-    if (link.page === 'billing' && link.label === 'Receive payment' && !canReceivePayment(user?.role)) return false;
+    if (link.page === 'billing' && !canReceivePayment(user?.role)) return false;
     return canAccessPage(access, link.page);
   });
   const groups = (['work', 'desk', 'setup'] as NavGroup[]).filter((group) => links.some((link) => link.group === group));
 
   return (
     <AgentChatProvider>
-    <div className="flex min-h-screen bg-slate-50">
-      <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
-        <div className="border-b border-slate-100 px-4 py-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-clinic-600">Clinic CMS</p>
-          <p className="mt-1 text-sm font-semibold text-slate-900">
-            {user?.department ? DEPARTMENT_LABELS[user.department] : user ? ROLE_LABELS[user.role] : 'Staff portal'}
-          </p>
+    <div className="flex min-h-screen bg-slate-100">
+      <aside className="flex w-64 shrink-0 flex-col bg-clinic-900 text-white">
+        <div className="border-b border-white/10 px-4 py-4">
+          <div className="flex items-center gap-3">
+            <HospitalMark size="sm" />
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-clinic-100">Municipal hospital</p>
+              <p className="mt-0.5 truncate text-sm font-semibold text-white">
+                {user?.department ? DEPARTMENT_LABELS[user.department] : user ? ROLE_LABELS[user.role] : 'Staff portal'}
+              </p>
+            </div>
+          </div>
         </div>
 
         <nav className="flex flex-1 flex-col gap-4 overflow-y-auto p-3">
           {groups.map((group) => (
             <div key={group}>
-              <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{GROUP_LABEL[group]}</p>
-              <div className="flex flex-col gap-1">
+              <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-clinic-200/70">{GROUP_LABEL[group]}</p>
+              <div className="flex flex-col gap-0.5">
                 {links
                   .filter((link) => link.group === group)
                   .map((link) => {
@@ -122,15 +145,15 @@ export default function AppShell() {
                         <NavLink
                           to={link.children?.[0]?.to ?? link.to}
                           className={() =>
-                            `rounded-lg px-3 py-2 text-sm font-medium ${
-                              parentActive ? 'bg-clinic-600 text-white' : 'text-slate-700 hover:bg-clinic-50'
+                            `block rounded-lg px-3 py-2 text-sm font-medium ${
+                              parentActive ? 'bg-clinic-600 text-white' : 'text-slate-200 hover:bg-white/10'
                             }`
                           }
                         >
                           {link.label}
                         </NavLink>
-                        {link.children && (parentActive || link.page === 'reception') && (
-                          <div className="mb-1 ml-2 mt-1 border-l border-slate-200 pl-2">
+                        {link.children && (parentActive || link.page === 'reception' || link.page === 'billing') && (
+                          <div className="mb-1 ml-3 mt-1 border-l border-white/15 pl-2">
                             {link.children.map((child) => (
                               <NavLink
                                 key={child.to}
@@ -143,7 +166,7 @@ export default function AppShell() {
                                       : location.pathname.startsWith(child.to.split('?')[0] ?? child.to) &&
                                         (child.to.includes('?') ? location.search.includes(child.to.split('?')[1] ?? '') : true);
                                   return `block rounded-lg px-2 py-1.5 text-xs font-medium ${
-                                    active ? 'bg-clinic-50 text-clinic-800' : 'text-slate-600 hover:bg-slate-50'
+                                    active ? 'bg-white/15 text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white'
                                   }`;
                                 }}
                               >
@@ -160,15 +183,15 @@ export default function AppShell() {
           ))}
         </nav>
 
-        <div className="border-t border-slate-100 p-3">
-          <p className="truncate text-sm font-medium text-slate-800">
+        <div className="border-t border-white/10 p-3">
+          <p className="truncate text-sm font-medium text-white">
             {user?.firstName} {user?.lastName}
           </p>
-          <p className="text-xs text-slate-500">{user ? ROLE_LABELS[user.role] : ''}</p>
+          <p className="text-xs text-clinic-100/80">{user ? ROLE_LABELS[user.role] : ''}</p>
           <button
             type="button"
             onClick={() => logout()}
-            className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+            className="mt-3 w-full rounded-lg border border-white/20 px-3 py-1.5 text-sm text-white hover:bg-white/10"
           >
             Sign out
           </button>
@@ -180,11 +203,7 @@ export default function AppShell() {
         {syncError && <div className="bg-amber-50 px-6 py-2 text-sm text-amber-900">{syncError}</div>}
         <DeskActionBar />
         <NotificationsBanner />
-        {!location.pathname.startsWith('/care/dashboard') && (
-          <div className="px-6 pt-3">
-            <PageDashboard />
-          </div>
-        )}
+        {!location.pathname.startsWith('/care/dashboard') && <PageDashboard />}
         <Outlet />
         <CallNextOverlay />
       </div>
