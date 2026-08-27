@@ -226,3 +226,7 @@ backend/               Express API, SQLite, auth, backups, email/SMS outbox
 backend/data/          hospital.sqlite (created at runtime, gitignored)
 Clinic-Management-System-Guide.docx  Full staff and operations guide
 ```
+
+## Contributors
+
+- [Richard Justice Doe](https://github.com/Richard-Justice-Doe) — author
